@@ -76,6 +76,8 @@ model User {
   messages      Message[]
   wallet        Wallet?
   notifications Notification[]
+  ratingsGiven    Rating[] @relation("ratingsGiven")
+  ratingsReceived Rating[] @relation("ratingsReceived")
 
   @@index([orgId])
   @@map("users")
@@ -172,6 +174,7 @@ model Ride {
   bookings Booking[]
   pings    LocationPing[]
   messages Message[]
+  ratings  Rating[]
 
   @@index([orgId, status, departureAt])
   @@index([driverId])
@@ -182,6 +185,27 @@ enum BookingStatus {
   BOOKED
   CANCELLED
   COMPLETED
+}
+
+// One rating per passenger per completed trip. Stored as rows rather than a
+// running average on the user so a score can always be recomputed or audited.
+model Rating {
+  id       String @id @default(cuid())
+  rideId   String
+  raterId  String
+  driverId String
+  stars    Int
+  comment  String?
+
+  createdAt DateTime @default(now())
+
+  ride   Ride @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  rater  User @relation("ratingsGiven", fields: [raterId], references: [id], onDelete: Cascade)
+  driver User @relation("ratingsReceived", fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@unique([rideId, raterId])
+  @@index([driverId])
+  @@map("ratings")
 }
 
 model Booking {

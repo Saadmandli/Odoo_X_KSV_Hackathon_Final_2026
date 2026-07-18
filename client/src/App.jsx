@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./lib/auth";
 import Layout from "./components/Layout";
 import { Spinner } from "./components/ui";
 
+import Splash from "./pages/Splash";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
@@ -39,6 +40,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          <Route path="/" element={<Splash />} />
           <Route path="/login" element={<AnonOnly><Login /></AnonOnly>} />
           <Route path="/signup" element={<AnonOnly><Signup /></AnonOnly>} />
 

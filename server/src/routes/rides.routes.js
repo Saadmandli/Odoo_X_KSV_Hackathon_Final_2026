@@ -184,10 +184,26 @@ router.get(
       .filter((m) => m.detourKm <= MAX_DETOUR_KM)
       .sort((a, b) => a.detourKm - b.detourKm);
 
+    // One grouped query for every driver on screen, rather than one per card.
+    const driverIds = [...new Set(scored.map((m) => m.ride.driverId))];
+    const ratings = await prisma.rating.groupBy({
+      by: ["driverId"],
+      where: { driverId: { in: driverIds } },
+      _avg: { stars: true },
+      _count: true,
+    });
+    const ratingBy = new Map(
+      ratings.map((r) => [
+        r.driverId,
+        { average: Math.round((r._avg.stars ?? 0) * 10) / 10, count: r._count },
+      ])
+    );
+
     res.json({
       count: scored.length,
       rides: scored.map((m) => ({
         ...shapeRide(m.ride),
+        driverRating: ratingBy.get(m.ride.driverId) ?? { average: null, count: 0 },
         match: {
           pickupDistanceKm: round1(m.pickupKm),
           dropDistanceKm: round1(m.dropKm),
@@ -483,11 +499,37 @@ router.post(
 );
 
 // -------------------------------------------------------------------- chat
+/**
+ * Chat is private to the people actually travelling together.
+ *
+ * Org membership is not enough: a colleague who is not on the trip has no
+ * business reading where someone is being collected from.
+ */
+async function assertParticipant(req) {
+  const ride = await prisma.ride.findFirst({
+    where: { id: req.params.id, orgId: req.user.orgId },
+    select: {
+      driverId: true,
+      bookings: { where: { status: { not: "CANCELLED" } }, select: { passengerId: true } },
+    },
+  });
+  if (!ride) return { error: 404, message: "Ride not found" };
+
+  const isParticipant =
+    ride.driverId === req.user.id || ride.bookings.some((b) => b.passengerId === req.user.id);
+  if (!isParticipant) return { error: 403, message: "Not a participant on this trip" };
+
+  return { ok: true };
+}
+
 router.get(
   "/:id/messages",
   ah(async (req, res) => {
+    const guard = await assertParticipant(req);
+    if (guard.error) return res.status(guard.error).json({ error: guard.message });
+
     const messages = await prisma.message.findMany({
-      where: { rideId: req.params.id, ride: { orgId: req.user.orgId } },
+      where: { rideId: req.params.id },
       include: { sender: { select: { id: true, name: true, avatarColor: true } } },
       orderBy: { createdAt: "asc" },
       take: 200,
@@ -499,6 +541,9 @@ router.get(
 router.post(
   "/:id/messages",
   ah(async (req, res) => {
+    const guard = await assertParticipant(req);
+    if (guard.error) return res.status(guard.error).json({ error: guard.message });
+
     const body = String(req.body?.body ?? "").trim();
     if (!body) return res.status(400).json({ error: "Message cannot be empty" });
 
@@ -512,7 +557,7 @@ router.post(
 
 // ------------------------------------------------------------------ shaping
 const rideInclude = {
-  driver: { select: { id: true, name: true, phone: true, avatarColor: true } },
+  driver: { select: { id: true, name: true, phone: true, avatarColor: true, department: true } },
   vehicle: { select: { id: true, model: true, registrationNumber: true, seatingCapacity: true } },
   bookings: {
     where: { status: { not: "CANCELLED" } },

@@ -12,10 +12,13 @@ import {
   Share2,
   ShieldCheck,
   Flag,
+  Repeat,
 } from "lucide-react";
 import { get, post } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import MapView from "../components/MapView";
+import PickupPlan from "../components/PickupPlan";
+import RateDriver from "../components/RateDriver";
 import {
   Avatar,
   Banner,
@@ -34,6 +37,7 @@ const TRACK_INTERVAL_MS = 3000;
 const CHAT_INTERVAL_MS = 4000;
 
 const place = (label) => String(label ?? "").split(",")[0];
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /**
  * Turns the trip state machine into one plain sentence.
@@ -120,6 +124,7 @@ export default function TripDetail() {
   const [showChat, setShowChat] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
+  const [repeatNote, setRepeatNote] = useState("");
 
   const chatEndRef = useRef(null);
 
@@ -205,6 +210,39 @@ export default function TripDetail() {
     } catch (err) {
       setError(err.message);
     } finally {
+      setBusy(false);
+    }
+  };
+
+  const generateNext = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const { created, skipped } = await post(`/rides/${rideId}/repeat`, { weeks: 2 });
+      setRepeatNote(
+        created > 0 ? `${created} ride${created === 1 ? "" : "s"} created` : `Already scheduled (${skipped})`
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancel = async () => {
+    const asDriver = ride.driverId === user.id;
+    const message = asDriver
+      ? `Cancel this ride? ${riders.length} ${riders.length === 1 ? "person loses their" : "people lose their"} seat.`
+      : "Cancel your seat on this ride?";
+    if (!confirm(message)) return;
+
+    setBusy(true);
+    setError("");
+    try {
+      await post(asDriver ? `/rides/${rideId}/cancel` : `/bookings/${myBooking.id}/cancel`, {});
+      navigate("/trips");
+    } catch (err) {
+      setError(err.message);
       setBusy(false);
     }
   };
@@ -386,6 +424,33 @@ export default function TripDetail() {
           ))}
       </div>
 
+      {isDriver && riders.length > 1 && <PickupPlan rideId={rideId} />}
+
+      {!isDriver && myBooking && ride.status === "COMPLETED" && (
+        <RateDriver rideId={rideId} driverName={ride.driver.name} />
+      )}
+
+      {isDriver && ride.isRecurring && ride.recurrenceDays?.length > 0 && (
+        <div className="card mt-3 flex flex-wrap items-center gap-3 p-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <Repeat size={15} className="text-brand-600" />
+              <span className="text-[15px] font-medium text-slate-900">Weekly commute</span>
+            </div>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Repeats every {ride.recurrenceDays.map((d) => DAY_NAMES[d]).join(", ")}
+            </p>
+          </div>
+          <button
+            onClick={generateNext}
+            disabled={busy}
+            className="btn-secondary btn-sm shrink-0"
+          >
+            {repeatNote || "Create next 2 weeks"}
+          </button>
+        </div>
+      )}
+
       {/* Fare */}
       <div className="card mt-3 p-4">
         <div className="flex items-center justify-between">
@@ -427,6 +492,18 @@ export default function TripDetail() {
           <button className="btn-secondary w-full shadow-lift" onClick={share}>
             <Navigation size={16} />
             Share live location with family
+          </button>
+        )}
+
+        {/* Cancelling is only possible before the trip starts — once wheels are
+            moving the seat has already been used. */}
+        {ride.status === "PUBLISHED" && (isDriver || myBooking) && (
+          <button
+            onClick={cancel}
+            disabled={busy}
+            className="mt-2 w-full rounded-lg py-2.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+          >
+            {isDriver ? "Cancel this ride" : "Cancel my seat"}
           </button>
         )}
       </div>

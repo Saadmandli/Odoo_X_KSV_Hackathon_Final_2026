@@ -11,6 +11,7 @@ import reportsRoutes from "./routes/reports.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import notificationsRoutes from "./routes/notifications.routes.js";
 import publicRoutes from "./routes/public.routes.js";
+import ratingsRoutes from "./routes/ratings.routes.js";
 
 export const app = express(); 
 
@@ -33,6 +34,7 @@ app.use("/api/places", placesRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/notifications", notificationsRoutes);
+app.use("/api/ratings", ratingsRoutes);
 
 app.use((req, res) => res.status(404).json({ error: `No route for ${req.method} ${req.path}` }));
 

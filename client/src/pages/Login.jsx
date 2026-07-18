@@ -5,10 +5,10 @@ import { useAuth } from "../lib/auth";
 import { Banner, Wordmark } from "../components/ui";
 
 const TEST_ACCOUNTS = [
-  { name: "Prayag Panchani", email: "prayag@northbridge.in", password: "password123", note: "Engineering" },
-  { name: "Saad Mandli", email: "saad@northbridge.in", password: "password123", note: "Product" },
-  { name: "Ishita Rao", email: "ishita@northbridge.in", password: "password123", note: "Finance" },
-  { name: "Shrey Naik", email: "shrey@northbridge.in", password: "admin123", note: "Also administrator" },
+  { name: "Prayag Panchani", email: "prayag@northbridge.in", password: "password123" },
+  { name: "Saad Mandli", email: "saad@northbridge.in", password: "password123" },
+  { name: "Ishita Rao", email: "ishita@northbridge.in", password: "password123" },
+  { name: "Shrey Naik", email: "shrey@northbridge.in", password: "admin123" },
 ];
 
 export default function Login() {
@@ -118,15 +118,14 @@ export default function Login() {
             Any employee can offer a ride or book a seat.
           </p>
           <div className="grid grid-cols-2 gap-2">
-            {TEST_ACCOUNTS.map(({ name, email, password, note }) => (
+            {TEST_ACCOUNTS.map(({ name, email, password }) => (
               <button
                 key={email}
                 type="button"
                 onClick={() => setForm({ email, password })}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-left transition hover:bg-slate-50 active:bg-slate-100"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 active:bg-slate-100"
               >
-                <span className="block text-sm font-medium text-slate-800">{name}</span>
-                <span className="block text-[11px] text-slate-500">{note}</span>
+                {name}
               </button>
             ))}
           </div>

@@ -8,6 +8,7 @@ import {
   MapPin,
   Route,
   SearchX,
+  Star,
   Users,
 } from "lucide-react";
 import { get, post } from "../lib/api";
@@ -71,7 +72,15 @@ export default function Dashboard() {
 
     setBusy(true);
     try {
-      setRoute(await post("/rides/route-preview", { origin, dest }));
+      // Sending the vehicle lets the server work out a fair per-seat cost from
+      // the company's fuel price and that car's mileage.
+      const preview = await post("/rides/route-preview", {
+        origin,
+        dest,
+        ...(mode === "offer" && vehicleId ? { vehicleId, seats: Number(seats) } : {}),
+      });
+      setRoute(preview);
+      if (preview.suggestedFare) setFare(preview.suggestedFare.amount);
       setStep("route");
     } catch (err) {
       setError(err.message);
@@ -197,6 +206,63 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {route.suggestedFare && mode === "offer" && (
+          <div className="card mt-3 p-4">
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm text-slate-600">Suggested fare per seat</span>
+              <span className="text-xl font-semibold text-brand-700">
+                {money(route.suggestedFare.amount)}
+              </span>
+            </div>
+
+            <p className="mt-1 text-xs text-slate-500">{route.suggestedFare.basis}</p>
+
+            <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 text-xs">
+              <div>
+                <dt className="text-slate-500">Fuel for this trip</dt>
+                <dd className="text-slate-700">
+                  {money(route.suggestedFare.fuelCost)} · {route.suggestedFare.litres} L
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Wear and tear</dt>
+                <dd className="text-slate-700">{money(route.suggestedFare.wearCost)}</dd>
+              </div>
+            </dl>
+
+            <div className="mt-3">
+              <label className="label">Your fare per seat</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">₹</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min="0"
+                  className="field pl-7"
+                  value={fare}
+                  onChange={(e) => setFare(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Cost sharing, not a taxi fare. Flag anything well above cost so
+                a colleague is not quietly overcharged. */}
+            {Number(fare) > route.suggestedFare.amount * 1.5 && (
+              <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                That is {Math.round((Number(fare) / route.suggestedFare.amount) * 100 - 100)}% above
+                the running cost of this trip. Carpooling is meant to share the cost, not profit
+                from it.
+              </p>
+            )}
+
+            {Number(fare) > 0 && Number(fare) <= route.suggestedFare.amount && (
+              <p className="mt-2 text-xs text-brand-700">
+                At or below cost. Your riders are getting a fair deal.
+              </p>
+            )}
+          </div>
+        )}
+
         {route.source === "fallback" && (
           <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
             Road routing is unavailable right now, so this is a direct-line estimate.
@@ -275,8 +341,17 @@ export default function Dashboard() {
                 <div className="flex items-center gap-3">
                   <Avatar name={ride.driver.name} color={ride.driver.avatarColor} size={40} />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-slate-900">{ride.driver.name}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate font-medium text-slate-900">{ride.driver.name}</span>
+                      {ride.driverRating?.average && (
+                        <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-slate-600">
+                          <Star size={11} className="text-amber-500" fill="currentColor" />
+                          {ride.driverRating.average}
+                        </span>
+                      )}
+                    </div>
                     <div className="truncate text-xs text-slate-500">
+                      {ride.driver.department && `${ride.driver.department} · `}
                       {ride.vehicle.model} · {ride.vehicle.registrationNumber}
                     </div>
                   </div>
@@ -284,7 +359,9 @@ export default function Dashboard() {
                     <div className="text-lg font-semibold text-slate-900">
                       {money(ride.farePerSeat)}
                     </div>
-                    <div className="text-[11px] text-slate-500">per seat</div>
+                    <div className="text-[11px] text-slate-500">
+                      {money(ride.farePerSeat / ride.distanceKm)}/km
+                    </div>
                   </div>
                 </div>
 

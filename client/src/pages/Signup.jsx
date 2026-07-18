@@ -1,17 +1,40 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Building2, CircleAlert, CircleCheck } from "lucide-react";
 import { useAuth } from "../lib/auth";
+import { get } from "../lib/api";
 import { Banner, Wordmark } from "../components/ui";
 
 export default function Signup() {
   const { signup } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: "", phone: "", email: "", password: "", confirm: "" });
+  const [org, setOrg] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  // The email domain decides which organisation someone joins, so resolve it
+  // as they type rather than letting them discover the rule by being rejected.
+  const domain = form.email.includes("@") ? form.email.split("@")[1].trim().toLowerCase() : "";
+
+  useEffect(() => {
+    if (!domain || !domain.includes(".")) {
+      setOrg(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setOrg(await get(`/public/organization?domain=${encodeURIComponent(domain)}`));
+      } catch {
+        setOrg({ registered: false, domain });
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [domain]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -102,6 +125,26 @@ export default function Signup() {
               onChange={set("email")}
               placeholder="you@company.com"
             />
+
+            {org?.registered && (
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2">
+                <Building2 size={15} className="shrink-0 text-brand-600" />
+                <span className="min-w-0 text-sm text-brand-800">
+                  You will join <span className="font-medium">{org.name}</span>
+                </span>
+                <CircleCheck size={15} className="ml-auto shrink-0 text-brand-600" />
+              </div>
+            )}
+
+            {org && org.registered === false && (
+              <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <CircleAlert size={15} className="mt-0.5 shrink-0 text-amber-600" />
+                <span className="text-sm text-amber-800">
+                  <span className="font-medium">{org.domain}</span> is not registered. Ask your
+                  administrator to add your company first.
+                </span>
+              </div>
+            )}
           </div>
 
           <div>
@@ -136,7 +179,7 @@ export default function Signup() {
 
           <Banner>{error}</Banner>
 
-          <button className="btn-primary w-full" disabled={busy}>
+          <button className="btn-primary w-full" disabled={busy || org?.registered === false}>
             {busy ? "Creating account" : "Create account"}
           </button>
         </form>

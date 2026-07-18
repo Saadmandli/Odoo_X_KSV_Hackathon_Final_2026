@@ -1,3 +1,7 @@
+/* Self-hosted rather than fetched from a CDN: the app must look identical on
+   a venue network that blocks or throttles Google Fonts, and there is no
+   flash of fallback text while a stylesheet round-trips. */
+@import "@fontsource-variable/inter";
 @import "leaflet/dist/leaflet.css";
 
 @tailwind base;

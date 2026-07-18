@@ -8,6 +8,35 @@ import { haversineKm } from "../lib/geo.js";
 // org-scoped, and it must leak as little as possible.
 const router = Router();
 
+/**
+ * Which organisation a given email domain belongs to.
+ *
+ * Used on the sign-up screen so someone can see the company they are about to
+ * join before submitting. Returns the name only — never the employee list,
+ * settings or anything else — so it cannot be used to survey an organisation.
+ */
+router.get(
+  "/organization",
+  ah(async (req, res) => {
+    const domain = String(req.query.domain ?? "").trim().toLowerCase();
+    if (!domain) return res.status(400).json({ error: "Domain is required" });
+
+    const org = await prisma.organization.findUnique({
+      where: { domain },
+      select: { name: true, domain: true },
+    });
+
+    if (!org) {
+      return res.status(404).json({
+        error: `${domain} is not a registered organisation.`,
+        registered: false,
+      });
+    }
+
+    res.json({ registered: true, ...org });
+  })
+);
+
 router.get(
   "/track/:token",
   ah(async (req, res) => {

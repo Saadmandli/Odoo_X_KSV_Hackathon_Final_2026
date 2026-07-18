@@ -43,6 +43,35 @@ router.post(
         });
         if (claimed.count === 0) throw new HttpError(409, "Not enough seats left");
 
+        // A previous cancellation leaves a row behind, and (rideId, passengerId)
+        // is unique — so changing your mind twice would otherwise be blocked
+        // forever. Revive the cancelled booking instead of creating a second.
+        const previous = await tx.booking.findUnique({
+          where: { rideId_passengerId: { rideId, passengerId: req.user.id } },
+        });
+
+        if (previous) {
+          if (previous.status !== "CANCELLED") {
+            throw new HttpError(409, "You have already booked this ride");
+          }
+
+          return tx.booking.update({
+            where: { id: previous.id },
+            data: {
+              status: "BOOKED",
+              seats,
+              fareAmount: Number(ride.farePerSeat) * seats,
+              pickupLabel: pickup.label,
+              pickupLat: pickup.lat,
+              pickupLng: pickup.lng,
+              dropLabel: drop.label,
+              dropLat: drop.lat,
+              dropLng: drop.lng,
+            },
+            include: bookingInclude,
+          });
+        }
+
         return tx.booking.create({
           data: {
             rideId,
