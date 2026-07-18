@@ -44,11 +44,22 @@ const order = await call("/payments/wallet/recharge/order", {
 });
 ok("recharge order created", order.status === 200, order.json.sandbox ? "sandbox" : order.json.orderId);
 
+// With live keys the confirm step demands a verifiable signature, so an
+// unsigned call must be refused. Without keys there is nothing to verify and
+// the balance is credited directly. Both are correct; assert whichever applies.
 const topUp = await call("/payments/wallet/recharge/confirm", {
   method: "POST", token: saad, body: { amount: 500, method: "UPI" },
 });
-ok("wallet credited", topUp.json.balance === w0.json.balance + 500,
-   `${w0.json.balance} -> ${topUp.json.balance}`);
+
+if (cfg.json.razorpayEnabled) {
+  ok("unsigned top-up refused", topUp.status === 400, topUp.json.error ?? "");
+  const stillSame = (await call("/payments/wallet", { token: saad })).json.balance;
+  ok("refused top-up credited nothing", stillSame === w0.json.balance,
+     `${w0.json.balance} -> ${stillSame}`);
+} else {
+  ok("wallet credited in sandbox", topUp.json.balance === w0.json.balance + 500,
+     `${w0.json.balance} -> ${topUp.json.balance}`);
+}
 
 const badAmount = await call("/payments/wallet/recharge/order", {
   method: "POST", token: saad, body: { amount: -5, method: "UPI" },
@@ -117,20 +128,24 @@ ok("shortfall reported to the UI", typeof broke.json.shortfall === "number", `â‚
 const vlist = await call("/vehicles", { token: prayag });
 ok("vehicles list loads", vlist.json.vehicles?.length > 0);
 
+// Unique per run so a crashed earlier run cannot leave a duplicate behind.
+const plate = `GJ05ZZ${String(Date.now()).slice(-4)}`;
 const added = await call("/vehicles", {
   method: "POST", token: saad,
-  body: { model: "Tata Punch", registrationNumber: "gj 05 zz 7788", seatingCapacity: 4, fuelType: "Petrol", mileageKmpl: 20 },
+  body: { model: "Tata Punch", registrationNumber: plate.toLowerCase().replace(/(.{2})/g, "$1 "), seatingCapacity: 4, fuelType: "Petrol", mileageKmpl: 20 },
 });
-ok("vehicle added", added.status === 201);
-ok("registration normalised", added.json.vehicle?.registrationNumber === "GJ05ZZ7788",
+ok("vehicle added", added.status === 201, added.json.error ?? "");
+ok("registration normalised", added.json.vehicle?.registrationNumber === plate,
    added.json.vehicle?.registrationNumber);
 
 const dupe = await call("/vehicles", {
   method: "POST", token: saad,
-  body: { model: "Tata Punch", registrationNumber: "GJ05ZZ7788", seatingCapacity: 4 },
+  body: { model: "Tata Punch", registrationNumber: plate, seatingCapacity: 4 },
 });
 ok("duplicate vehicle rejected", dupe.status === 409);
-await call(`/vehicles/${added.json.vehicle.id}`, { method: "DELETE", token: saad });
+if (added.json.vehicle?.id) {
+  await call(`/vehicles/${added.json.vehicle.id}`, { method: "DELETE", token: saad });
+}
 
 // --- history
 const hist = await call("/bookings/history", { token: saad });

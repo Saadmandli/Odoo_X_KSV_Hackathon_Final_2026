@@ -20,16 +20,18 @@ export default function Payment() {
 
   const [booking, setBooking] = useState(null);
   const [wallet, setWallet] = useState(null);
+  const [gateway, setGateway] = useState(null);
   const [method, setMethod] = useState("WALLET");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    Promise.all([get("/bookings/my-trips"), get("/payments/wallet")])
-      .then(([trips, w]) => {
+    Promise.all([get("/bookings/my-trips"), get("/payments/wallet"), get("/payments/config")])
+      .then(([trips, w, cfg]) => {
         setBooking(trips.asPassenger.find((b) => b.id === bookingId) ?? null);
         setWallet(w);
+        setGateway(cfg);
       })
       .catch((err) => setError(err.message));
   }, [bookingId]);
@@ -196,11 +198,19 @@ export default function Payment() {
         {busy ? "Processing" : `Pay ${money(amount)}`}
       </button>
 
-      {["CARD", "UPI"].includes(method) && (
-        <p className="mt-2 text-center text-xs text-slate-400">
-          Card and UPI are processed by Razorpay in test mode.
-        </p>
-      )}
+      {["CARD", "UPI"].includes(method) &&
+        (gateway?.razorpayEnabled ? (
+          <p className="mt-2 text-center text-xs text-slate-400">
+            Secured by Razorpay · test mode
+          </p>
+        ) : (
+          // Say so out loud. A payment that "succeeds" with no gateway in sight
+          // reads as broken, which is worse than showing the real state.
+          <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs text-amber-800">
+            Payment gateway is not configured, so this will be recorded without a
+            live transaction. Add Razorpay test keys to enable real checkout.
+          </p>
+        ))}
     </div>
   );
 }

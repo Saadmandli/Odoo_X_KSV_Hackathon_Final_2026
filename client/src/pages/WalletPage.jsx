@@ -10,6 +10,7 @@ const QUICK_AMOUNTS = [200, 500, 1000, 2000];
 export default function WalletPage() {
   const { user } = useAuth();
   const [wallet, setWallet] = useState(null);
+  const [gateway, setGateway] = useState(null);
   const [showTopUp, setShowTopUp] = useState(false);
   const [amount, setAmount] = useState(500);
   const [method, setMethod] = useState("UPI");
@@ -20,6 +21,7 @@ export default function WalletPage() {
 
   useEffect(() => {
     load();
+    get("/payments/config").then(setGateway).catch(() => {});
   }, []);
 
   const topUp = async () => {
@@ -198,9 +200,16 @@ export default function WalletPage() {
           {busy ? "Processing" : `Add ${money(amount)}`}
         </button>
 
-        <p className="mt-2 text-center text-xs text-slate-400">
-          Processed by Razorpay in test mode.
-        </p>
+        {gateway?.razorpayEnabled ? (
+          <p className="mt-2 text-center text-xs text-slate-400">
+            Secured by Razorpay · test mode
+          </p>
+        ) : (
+          <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs text-amber-800">
+            Payment gateway is not configured. The balance will be credited
+            without a live transaction.
+          </p>
+        )}
       </Sheet>
     </div>
   );

@@ -19,16 +19,41 @@ const client = isRazorpayConfigured
 
 export const razorpayKeyId = KEY_ID;
 
+/** Razorpay rejects anything under 100 paise, so catch it before the round trip. */
+export const MIN_PAISE = 100;
+
+export class GatewayError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
 /** Amount arrives in rupees; Razorpay works in paise. */
 export async function createOrder({ amountRupees, receipt, notes }) {
   if (!client) return null;
 
-  return client.orders.create({
-    amount: Math.round(amountRupees * 100),
-    currency: "INR",
-    receipt,
-    notes,
-  });
+  const paise = Math.round(amountRupees * 100);
+  if (!Number.isFinite(paise) || paise < MIN_PAISE) {
+    throw new GatewayError(400, "The minimum payable amount is ₹1.");
+  }
+
+  try {
+    return await client.orders.create({ amount: paise, currency: "INR", receipt, notes });
+  } catch (err) {
+    // Razorpay surfaces auth problems as 401; anything else is on their side or
+    // ours, and either way the caller should not see a raw SDK error object.
+    const status = err?.statusCode === 401 ? 401 : 502;
+    const detail = err?.error?.description || err?.message || "unknown error";
+    console.error("[razorpay] order creation failed:", detail);
+
+    throw new GatewayError(
+      status,
+      status === 401
+        ? "Payment gateway credentials were rejected."
+        : "The payment gateway is not responding. Try wallet or cash."
+    );
+  }
 }
 
 /**

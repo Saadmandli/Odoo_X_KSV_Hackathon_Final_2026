@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireAuth, ah } from "../middleware/auth.js";
 import {
   createOrder,
+  GatewayError,
   isRazorpayConfigured,
   razorpayKeyId,
   verifySignature,
@@ -47,16 +48,19 @@ router.post(
     const parsed = rechargeSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Enter a valid amount" });
 
-    const order = await createOrder({
-      amountRupees: parsed.data.amount,
-      receipt: `wallet_${req.user.id.slice(-8)}_${Date.now()}`,
-      notes: { purpose: "wallet_recharge", userId: req.user.id },
-    });
+    try {
+      const order = await createOrder({
+        amountRupees: parsed.data.amount,
+        receipt: `wallet_${req.user.id.slice(-8)}_${Date.now()}`,
+        notes: { purpose: "wallet_recharge", userId: req.user.id },
+      });
 
-    if (!order) {
-      return res.json({ sandbox: true, amount: parsed.data.amount });
+      if (!order) return res.json({ sandbox: true, amount: parsed.data.amount });
+      res.json({ sandbox: false, orderId: order.id, amount: parsed.data.amount, keyId: razorpayKeyId });
+    } catch (err) {
+      if (err instanceof GatewayError) return res.status(err.status).json({ error: err.message });
+      throw err;
     }
-    res.json({ sandbox: false, orderId: order.id, amount: parsed.data.amount, keyId: razorpayKeyId });
   })
 );
 
@@ -145,7 +149,9 @@ router.post(
       if (!order) return res.json({ sandbox: true, amount });
       res.json({ sandbox: false, orderId: order.id, amount, keyId: razorpayKeyId });
     } catch (err) {
-      if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+      if (err instanceof HttpError || err instanceof GatewayError) {
+        return res.status(err.status).json({ error: err.message });
+      }
       throw err;
     }
   })
