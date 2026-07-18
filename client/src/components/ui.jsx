@@ -11,19 +11,19 @@ import { Sheet as ShadcnSheet, SheetContent, SheetHeader, SheetTitle } from "./u
  */
 export function Wordmark({ size = "md", className = "" }) {
   const scale = {
-    sm: "text-[15px]",
-    md: "text-[19px]",
-    lg: "text-[28px]",
-    xl: "text-[34px]",
+    sm: "text-[17px]",
+    md: "text-[23px]",
+    lg: "text-[30px]",
+    xl: "text-[38px]",
   }[size];
 
   return (
     <span
-      className={`${scale} font-semibold leading-none tracking-[-0.02em] ${className}`}
+      className={`${scale} font-black leading-none tracking-tight ${className}`}
       aria-label="EcoMiles"
     >
-      <span className="text-brand-600">Eco</span>
-      <span className="text-slate-900">Miles</span>
+      <span className="text-brand-700">Eco</span>
+      <span className="text-slate-950">Miles</span>
     </span>
   );
 }
@@ -197,11 +197,25 @@ export function NextStep({ children, tone = "info" }) {
 
 export function Banner({ kind = "error", children }) {
   if (!children) return null;
-  const styles =
-    kind === "error"
-      ? "border-rose-200 bg-rose-50 text-rose-700"
-      : "border-brand-200 bg-brand-50 text-brand-700";
-  return <div className={`rounded-lg border px-3 py-2 text-sm ${styles}`}>{children}</div>;
+  const isError = kind === "error";
+  return (
+    <div
+      className={`flex items-start gap-2.5 rounded-xl border p-3.5 text-xs font-medium leading-relaxed transition-all ${
+        isError
+          ? "border-rose-200/90 bg-rose-50/80 text-rose-800 shadow-xs"
+          : "border-emerald-200/90 bg-emerald-50/80 text-emerald-800 shadow-xs"
+      }`}
+    >
+      <span
+        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${
+          isError ? "bg-rose-200/80 text-rose-700" : "bg-emerald-200/80 text-emerald-700"
+        }`}
+      >
+        {isError ? "!" : "✓"}
+      </span>
+      <div className="flex-1">{children}</div>
+    </div>
+  );
 }
 
 /** Bottom sheet on phones, centred dialog from tablet up. */

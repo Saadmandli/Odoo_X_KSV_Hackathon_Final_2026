@@ -19,15 +19,23 @@ export class ApiError extends Error {
 export async function api(path, { method = "GET", body, signal } = {}) {
   const token = getToken();
 
-  const res = await fetch(BASE + path, {
-    method,
-    signal,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(BASE + path, {
+      method,
+      signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    if (err.name === "TypeError" || err.message === "Failed to fetch") {
+      throw new ApiError(503, "Cannot connect to server. Please ensure the backend server is running on http://localhost:4000.");
+    }
+    throw err;
+  }
 
   const data = await res.json().catch(() => ({}));
 

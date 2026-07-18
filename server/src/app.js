@@ -15,8 +15,9 @@ import ratingsRoutes from "./routes/ratings.routes.js";
 
 export const app = express(); 
 
+const isDev = process.env.NODE_ENV !== "production";
 const origins = (process.env.CORS_ORIGINS || "*").split(",").map((s) => s.trim());
-app.use(cors({ origin: origins.includes("*") ? true : origins, credentials: true }));
+app.use(cors({ origin: isDev || origins.includes("*") ? true : origins, credentials: true }));
 app.use(express.json());
 
 // Kept trivial and dependency-free: this is what the uptime pinger hits, so it
