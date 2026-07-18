@@ -12,7 +12,7 @@ import adminRoutes from "./routes/admin.routes.js";
 import notificationsRoutes from "./routes/notifications.routes.js";
 import publicRoutes from "./routes/public.routes.js";
 
-export const app = express();
+export const app = express(); 
 
 const origins = (process.env.CORS_ORIGINS || "*").split(",").map((s) => s.trim());
 app.use(cors({ origin: origins.includes("*") ? true : origins, credentials: true }));
@@ -24,7 +24,6 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, at: new Date().toISOS
 
 // Mounted before the authenticated routers: this is the shared tracking link.
 app.use("/api/public", publicRoutes);
-
 app.use("/api/auth", authRoutes);
 app.use("/api/rides", ridesRoutes);
 app.use("/api/bookings", bookingsRoutes);

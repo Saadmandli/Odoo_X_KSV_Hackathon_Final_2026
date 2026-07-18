@@ -8,6 +8,13 @@ import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
 import Trips from "./pages/Trips";
 import TripDetail from "./pages/TripDetail";
+import Payment from "./pages/Payment";
+import WalletPage from "./pages/WalletPage";
+import Vehicles from "./pages/Vehicles";
+import History from "./pages/History";
+import Reports from "./pages/Reports";
+import Settings from "./pages/Settings";
+import Admin from "./pages/Admin";
 import PublicTrack from "./pages/PublicTrack";
 
 function Protected({ children, adminOnly = false }) {
@@ -48,6 +55,20 @@ export default function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/trips" element={<Trips />} />
             <Route path="/trips/:rideId" element={<TripDetail />} />
+            <Route path="/pay/:bookingId" element={<Payment />} />
+            <Route path="/wallet" element={<WalletPage />} />
+            <Route path="/vehicles" element={<Vehicles />} />
+            <Route path="/history" element={<History />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route
+              path="/admin"
+              element={
+                <Protected adminOnly>
+                  <Admin />
+                </Protected>
+              }
+            />
           </Route>
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
