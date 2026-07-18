@@ -22,11 +22,29 @@ export function loadRazorpay() {
 }
 
 /**
+ * Radix dialogs (our bottom sheets) set `pointer-events: none` on <body> and
+ * trap focus while open. Razorpay's checkout mounts outside that dialog, so it
+ * renders but swallows every click. Callers should close their sheet first;
+ * this clears the leftover inline styles in case one lingers.
+ */
+function releaseModalLock() {
+  document.body.style.pointerEvents = "";
+  document.body.removeAttribute("data-scroll-locked");
+  // Radix marks background content inert while a dialog is open.
+  document.querySelectorAll("[aria-hidden='true'][data-aria-hidden]").forEach((el) => {
+    el.removeAttribute("aria-hidden");
+    el.removeAttribute("data-aria-hidden");
+  });
+}
+
+/**
  * Opens Razorpay checkout and resolves with the payment result.
  * Resolves null if the user closes the sheet, so callers can tell "cancelled"
  * apart from "failed".
  */
 export function openCheckout({ keyId, orderId, amount, name, description, prefill }) {
+  releaseModalLock();
+
   return new Promise((resolve, reject) => {
     const rzp = new window.Razorpay({
       key: keyId,

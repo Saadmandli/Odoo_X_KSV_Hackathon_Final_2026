@@ -44,6 +44,12 @@ export default function WalletPage() {
         throw new Error("Could not reach the payment gateway. Try again in a moment.");
       }
 
+      // Close our sheet first. A Radix dialog blocks pointer events on
+      // everything outside itself, which would make the Razorpay window
+      // visible but completely unclickable.
+      setShowTopUp(false);
+      await new Promise((r) => setTimeout(r, 350)); // let the close animation finish
+
       const result = await openCheckout({
         keyId: order.keyId,
         orderId: order.orderId,
@@ -54,7 +60,10 @@ export default function WalletPage() {
       });
 
       if (!result) {
+        // Cancelled at the gateway: reopen the sheet so the amount they typed
+        // is still there and they can retry without starting over.
         setBusy(false);
+        setShowTopUp(true);
         return;
       }
 
@@ -67,6 +76,7 @@ export default function WalletPage() {
     } catch (err) {
       setError(err.message);
       setBusy(false);
+      setShowTopUp(true); // bring the sheet back so the error is visible
     }
   };
 
