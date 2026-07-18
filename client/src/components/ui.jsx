@@ -86,6 +86,71 @@ export function StatusChip({ status, children }) {
   );
 }
 
+/**
+ * Which side of a trip the current user is on.
+ *
+ * The same employee drives some days and rides others, so "driver" and
+ * "passenger" are activities rather than account types. Nothing in the UI
+ * should ever leave someone guessing which one they are looking at.
+ */
+export function RoleBadge({ role, size = "md" }) {
+  const driving = role === "driving";
+  const pad = size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs";
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full font-medium ${pad} ${
+        driving
+          ? "bg-brand-600 text-white"
+          : "bg-slate-800 text-white"
+      }`}
+    >
+      {driving ? <SteeringIcon /> : <SeatIcon />}
+      {driving ? "You are driving" : "You are riding"}
+    </span>
+  );
+}
+
+function SteeringIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M3.5 11h6M14.5 11h6M12 14.5V21" />
+    </svg>
+  );
+}
+
+function SeatIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+      <path d="M7 4v9a3 3 0 0 0 3 3h6" />
+      <path d="M17 16v4H8" />
+    </svg>
+  );
+}
+
+/**
+ * The single next thing this person should do, in plain language.
+ * Shown at the top of a trip so nobody has to work out the state machine.
+ */
+export function NextStep({ children, tone = "info" }) {
+  if (!children) return null;
+
+  const tones = {
+    info: "border-slate-200 bg-slate-50 text-slate-700",
+    action: "border-brand-200 bg-brand-50 text-brand-800",
+    waiting: "border-amber-200 bg-amber-50 text-amber-800",
+  };
+
+  return (
+    <div className={`rounded-lg border px-3 py-2.5 text-sm ${tones[tone]}`}>
+      <span className="font-medium">Next: </span>
+      {children}
+    </div>
+  );
+}
+
 export function Banner({ kind = "error", children }) {
   if (!children) return null;
   const styles =

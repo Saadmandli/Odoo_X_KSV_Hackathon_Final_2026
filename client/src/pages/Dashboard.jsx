@@ -350,6 +350,14 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* The same employee does both. Saying so removes the most common
+          confusion for anyone seeing the app for the first time. */}
+      <p className="mb-4 px-1 text-sm text-slate-500">
+        {mode === "find"
+          ? "Book a seat in a colleague's car and split the running cost."
+          : "Driving in anyway? Publish your empty seats and share the cost."}
+      </p>
+
       <div className="card space-y-4 p-4">
         <div className="relative space-y-3">
           <div>

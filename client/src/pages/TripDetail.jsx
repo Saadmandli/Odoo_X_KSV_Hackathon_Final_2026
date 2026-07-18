@@ -16,12 +16,95 @@ import {
 import { get, post } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import MapView from "../components/MapView";
-import { Avatar, Banner, Sheet, Spinner, StatusChip, money, when } from "../components/ui";
+import {
+  Avatar,
+  Banner,
+  NextStep,
+  RoleBadge,
+  Sheet,
+  Spinner,
+  StatusChip,
+  money,
+  when,
+} from "../components/ui";
 
 // Live tracking polls rather than holding a socket open: nothing to reconnect,
 // no dropped connection mid-demo, and it behaves the same on every host.
 const TRACK_INTERVAL_MS = 3000;
 const CHAT_INTERVAL_MS = 4000;
+
+const place = (label) => String(label ?? "").split(",")[0];
+
+/**
+ * Turns the trip state machine into one plain sentence.
+ *
+ * The same person drives on some trips and rides on others, so the wording has
+ * to change with the side they are on: a driver is told who to collect, a rider
+ * is told who is collecting them.
+ */
+function nextStepFor({ isDriver, ride, riders, myBooking }) {
+  if (ride.status === "CANCELLED") {
+    return { tone: "info", text: "This trip was cancelled." };
+  }
+
+  if (isDriver) {
+    switch (ride.status) {
+      case "PUBLISHED":
+        return riders.length === 0
+          ? {
+              tone: "waiting",
+              text: `Waiting for colleagues to book. ${ride.seatsLeft} of ${ride.totalSeats} seats still open.`,
+            }
+          : {
+              tone: "action",
+              text: `Collect ${riders.map((b) => b.passenger.name.split(" ")[0]).join(", ")} at ${place(riders[0].pickupLabel)}, then tap Start trip.`,
+            };
+      case "STARTED":
+        return {
+          tone: "action",
+          text: `Drive to the pickup point. Tap Mark in progress once everyone is aboard.`,
+        };
+      case "IN_PROGRESS":
+        return {
+          tone: "action",
+          text: `Head to ${place(ride.destLabel)}. Tap Complete trip when you arrive.`,
+        };
+      case "COMPLETED":
+        return {
+          tone: "info",
+          text:
+            riders.length > 0
+              ? `Trip finished. ${riders.length} ${riders.length === 1 ? "rider" : "riders"} will settle the fare.`
+              : "Trip finished.",
+        };
+      default:
+        return { tone: "info", text: "" };
+    }
+  }
+
+  const driverFirstName = ride.driver.name.split(" ")[0];
+
+  switch (ride.status) {
+    case "PUBLISHED":
+      return {
+        tone: "info",
+        text: `Be at ${place(myBooking?.pickupLabel ?? ride.originLabel)} for ${when(ride.departureAt)}. ${driverFirstName} will pick you up.`,
+      };
+    case "STARTED":
+      return { tone: "waiting", text: `${driverFirstName} has set off and is heading to your pickup point.` };
+    case "IN_PROGRESS":
+      return { tone: "waiting", text: `On the way to ${place(ride.destLabel)}.` };
+    case "COMPLETED":
+      return myBooking?.payment?.status === "COMPLETED"
+        ? { tone: "info", text: "Trip complete and paid. Nothing left to do." }
+        : {
+            tone: "action",
+            text: `Trip complete. Pay ${money(myBooking?.fareAmount ?? 0)} to close it off.`,
+          };
+    default:
+      return { tone: "info", text: "" };
+  }
+}
 
 export default function TripDetail() {
   const { rideId } = useParams();
@@ -167,6 +250,7 @@ export default function TripDetail() {
 
   const NEXT_LABEL = { PUBLISHED: "Start trip", STARTED: "Mark in progress", IN_PROGRESS: "Complete trip" };
   const nextAction = NEXT_LABEL[ride.status];
+  const guidance = nextStepFor({ isDriver, ride, riders, myBooking });
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -178,13 +262,19 @@ export default function TripDetail() {
         Trips
       </button>
 
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-          {ride.originLabel.split(",")[0]} to {ride.destLabel.split(",")[0]}
-        </h1>
+      <div className="flex items-center gap-2">
+        <RoleBadge role={isDriver ? "driving" : "riding"} />
         <StatusChip status={ride.status} />
       </div>
+
+      <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">
+        {ride.originLabel.split(",")[0]} to {ride.destLabel.split(",")[0]}
+      </h1>
       <p className="mt-1 text-sm text-slate-500">{when(ride.departureAt)}</p>
+
+      <div className="mt-3">
+        <NextStep tone={guidance.tone}>{guidance.text}</NextStep>
+      </div>
 
       <MapView
         origin={{ lat: ride.originLat, lng: ride.originLng }}

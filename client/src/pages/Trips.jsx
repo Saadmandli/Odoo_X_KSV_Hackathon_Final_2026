@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { CalendarDays, CarFront, ClipboardList, Route, Users } from "lucide-react";
 import { get } from "../lib/api";
-import { Avatar, EmptyState, Spinner, StatusChip, money, when } from "../components/ui";
+import { Avatar, EmptyState, RoleBadge, Spinner, StatusChip, money, when } from "../components/ui";
 
 export default function Trips() {
   const [data, setData] = useState(null);
@@ -21,6 +21,10 @@ export default function Trips() {
   return (
     <div className="mx-auto max-w-2xl">
       <h1 className="text-xl font-semibold tracking-tight text-slate-900">My trips</h1>
+      <p className="mt-1 text-sm text-slate-500">
+        The same account does both. Seats you booked are under Riding; rides you
+        published are under Driving.
+      </p>
 
       <div className="mt-4 grid grid-cols-2 gap-1 rounded-xl2 border border-slate-200 bg-white p-1">
         {[
@@ -74,15 +78,19 @@ function RiderCard({ booking }) {
 
   return (
     <Link to={`/trips/${ride.id}`} className="card block p-4 transition hover:shadow-lift">
+      <div className="mb-3 flex items-center gap-2">
+        <RoleBadge role="riding" size="sm" />
+        <StatusChip status={needsPayment ? "PENDING" : ride.status} />
+      </div>
+
       <div className="flex items-center gap-3">
         <Avatar name={ride.driver.name} color={ride.driver.avatarColor} size={38} />
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium text-slate-900">{ride.driver.name}</div>
           <div className="truncate text-xs text-slate-500">
-            {ride.vehicle.model} · {ride.vehicle.registrationNumber}
+            Driving · {ride.vehicle.model} · {ride.vehicle.registrationNumber}
           </div>
         </div>
-        <StatusChip status={needsPayment ? "PENDING" : ride.status} />
       </div>
 
       <RouteLine from={ride.originLabel} to={ride.destLabel} />
@@ -109,13 +117,15 @@ function DriverCard({ ride }) {
 
   return (
     <Link to={`/trips/${ride.id}`} className="card block p-4 transition hover:shadow-lift">
+      <div className="mb-3 flex items-center gap-2">
+        <RoleBadge role="driving" size="sm" />
+        <StatusChip status={ride.status} />
+      </div>
+
       <div className="flex items-center gap-2">
         <CarFront size={17} className="text-slate-400" />
         <span className="text-sm font-medium text-slate-900">
           {ride.vehicle.model} · {ride.vehicle.registrationNumber}
-        </span>
-        <span className="ml-auto">
-          <StatusChip status={ride.status} />
         </span>
       </div>
 
