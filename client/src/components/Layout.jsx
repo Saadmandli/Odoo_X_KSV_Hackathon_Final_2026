@@ -12,7 +12,6 @@ import {
   Settings,
   ShieldCheck,
   Wallet,
-  X,
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { get, post } from "../lib/api";

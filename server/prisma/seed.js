@@ -144,8 +144,22 @@ async function main() {
     },
   });
 
+  // The administrator is an employee too: managing the platform does not stop
+  // them commuting, so they get a vehicle like anyone else.
+  await prisma.vehicle.create({
+    data: {
+      userId: shrey.id,
+      model: "Honda City",
+      registrationNumber: "GJ01MN2266",
+      seatingCapacity: 4,
+      fuelType: "Petrol",
+      mileageKmpl: 18.4,
+      color: "Silver",
+    },
+  });
+
   // ---------------------------------------------------------- saved places
-  for (const user of [prayag, saad, ishita, devansh]) {
+  for (const user of [shrey, prayag, saad, ishita, devansh]) {
     await prisma.savedPlace.createMany({
       data: [
         { userId: user.id, label: "Home", address: PLACES.bopal.label, lat: PLACES.bopal.lat, lng: PLACES.bopal.lng },
@@ -247,15 +261,18 @@ async function main() {
     });
   }
 
+  // Listed by person, not by role: every employee can offer a ride and book a
+  // seat. Only administration is a separate responsibility.
   console.log(`
 Seed complete — ${org.name}
 
-  Admin     shrey@northbridge.in     / admin123
-  Driver    prayag@northbridge.in    / password123   (Maruti Swift GJ18AB4471)
-  Driver    saad@northbridge.in      / password123   (Hyundai i20 GJ01CD9032)
-  Employee  ishita@northbridge.in    / password123
-  Employee  devansh@northbridge.in   / password123
+  Shrey Naik       shrey@northbridge.in     / admin123        Honda City GJ01MN2266  (also administrator)
+  Prayag Panchani  prayag@northbridge.in    / password123     Maruti Swift GJ18AB4471
+  Saad Mandli      saad@northbridge.in      / password123     Hyundai i20 GJ01CD9032
+  Ishita Rao       ishita@northbridge.in    / password123     Tata Nexon GJ27EF1188
+  Devansh Mehta    devansh@northbridge.in   / password123     no vehicle
 
+  Any of them can publish a ride or book a seat.
   ${upcoming.length} bookable rides, 9 completed trips behind the reports.
 `);
 }

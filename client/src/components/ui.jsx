@@ -102,19 +102,6 @@ export function EmptyState({ icon: Icon, title, hint, action }) {
   );
 }
 
-export function StatCard({ icon: Icon, label, value, sub }) {
-  return (
-    <div className="card px-4 py-3">
-      <div className="flex items-center gap-1.5 text-[12px] text-slate-500">
-        {Icon && <Icon size={13} />}
-        {label}
-      </div>
-      <div className="mt-1 text-xl font-semibold text-slate-900">{value}</div>
-      {sub && <div className="text-[11px] text-slate-500">{sub}</div>}
-    </div>
-  );
-}
-
 const STATUS_STYLES = {
   PUBLISHED: "bg-sky-50 text-sky-700 border border-sky-200",
   BOOKED: "bg-sky-50 text-sky-700 border border-sky-200",
@@ -246,6 +233,3 @@ export const when = (d) =>
     minute: "2-digit",
     hour12: true,
   });
-
-export const dayMonth = (d) =>
-  new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });

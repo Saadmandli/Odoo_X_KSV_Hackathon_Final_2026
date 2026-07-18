@@ -19,8 +19,8 @@ const client = isRazorpayConfigured
 
 export const razorpayKeyId = KEY_ID;
 
-/** Razorpay rejects anything under 100 paise, so catch it before the round trip. */
-export const MIN_PAISE = 100;
+// Razorpay rejects anything under 100 paise, so catch it before the round trip.
+const MIN_PAISE = 100;
 
 export class GatewayError extends Error {
   constructor(status, message) {

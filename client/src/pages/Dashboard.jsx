@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   ArrowUpDown,
   CalendarDays,
-  CarFront,
   Clock,
   MapPin,
   Route,

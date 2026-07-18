@@ -58,14 +58,6 @@ export async function getRoute(origin, dest) {
   }
 }
 
-/** How far off the ride's route a point is — powers ride matching. */
-export function detourKm(rideOrigin, rideDest, ptA, ptB) {
-  return (
-    haversineKm(rideOrigin.lat, rideOrigin.lng, ptA.lat, ptA.lng) +
-    haversineKm(rideDest.lat, rideDest.lng, ptB.lat, ptB.lng)
-  );
-}
-
 function round2(n) {
   return Math.round(n * 100) / 100;
 }

@@ -7,7 +7,6 @@ import {
   History,
   LifeBuoy,
   LogOut,
-  MapPin,
   Plus,
   Star,
   Trash2,

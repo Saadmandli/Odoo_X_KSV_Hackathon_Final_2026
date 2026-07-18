@@ -4,6 +4,13 @@ import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { Banner, Wordmark } from "../components/ui";
 
+const TEST_ACCOUNTS = [
+  { name: "Prayag Panchani", email: "prayag@northbridge.in", password: "password123", note: "Engineering" },
+  { name: "Saad Mandli", email: "saad@northbridge.in", password: "password123", note: "Product" },
+  { name: "Ishita Rao", email: "ishita@northbridge.in", password: "password123", note: "Finance" },
+  { name: "Shrey Naik", email: "shrey@northbridge.in", password: "admin123", note: "Also administrator" },
+];
+
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -102,22 +109,24 @@ export default function Login() {
         </p>
 
         <div className="mt-10">
-          <p className="mb-2 text-center text-xs font-medium uppercase tracking-wide text-slate-400">
-            Reviewer access
+          <p className="mb-1 text-center text-xs font-medium uppercase tracking-wide text-slate-400">
+            Test accounts
           </p>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              ["Driver", "prayag@northbridge.in", "password123"],
-              ["Rider", "saad@northbridge.in", "password123"],
-              ["Admin", "shrey@northbridge.in", "admin123"],
-            ].map(([label, email, password]) => (
+          {/* Deliberately named after people, not roles. Every employee both
+              offers and books rides; only administration is a separate job. */}
+          <p className="mb-3 text-center text-xs text-slate-500">
+            Any employee can offer a ride or book a seat.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {TEST_ACCOUNTS.map(({ name, email, password, note }) => (
               <button
-                key={label}
+                key={email}
                 type="button"
                 onClick={() => setForm({ email, password })}
-                className="btn-secondary btn-sm"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-left transition hover:bg-slate-50 active:bg-slate-100"
               >
-                {label}
+                <span className="block text-sm font-medium text-slate-800">{name}</span>
+                <span className="block text-[11px] text-slate-500">{note}</span>
               </button>
             ))}
           </div>
