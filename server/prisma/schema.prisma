@@ -1,0 +1,319 @@
+// Carpooling Platform — data model
+// Multi-tenant: every row is reachable from an Organization via orgId.
+
+generator client {
+  provider      = "prisma-client-js"
+  // "native" for local Windows dev, rhel target for Vercel's build image.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  // Deliberately NOT "DATABASE_URL": this machine has a user-level
+  // DATABASE_URL pointing at the Arthace `finx_dev` database, and real env
+  // vars outrank .env files. A project-specific name cannot be shadowed.
+  url      = env("CARPOOL_DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- org + users
+
+model Organization {
+  id     String @id @default(cuid())
+  name   String
+  // Employees self-register with a matching email domain, e.g. "acme.com".
+  domain String @unique
+
+  // Admin > Settings > Company Details
+  registeredAddress String?
+  industry          String?
+  adminContact      String?
+
+  // Admin > Settings > Carpooling Configuration
+  fuelPricePerLitre Decimal @default(98.50) @db.Decimal(10, 2)
+  costPerKm         Decimal @default(4.20)  @db.Decimal(10, 2)
+  travelCostPerKm   Decimal @default(2.50)  @db.Decimal(10, 2)
+  currency          String  @default("INR")
+
+  createdAt DateTime @default(now())
+
+  users User[]
+  rides Ride[]
+
+  @@map("organizations")
+}
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+model User {
+  id           String  @id @default(cuid())
+  orgId        String
+  name         String
+  email        String  @unique
+  passwordHash String
+  phone        String?
+  employeeCode String?
+  department   String?
+  officeLocation String?
+  manager      String?
+  role         Role    @default(EMPLOYEE)
+
+  // Admin > Employees > "Platform Access" column: approve / revoke.
+  isApproved Boolean @default(true)
+  isActive   Boolean @default(true)
+
+  // Initials-avatar colour, so we never need file storage.
+  avatarColor String   @default("#2563eb")
+  createdAt   DateTime @default(now())
+
+  org           Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  vehicles      Vehicle[]
+  savedPlaces   SavedPlace[]
+  ridesOffered  Ride[]         @relation("driver")
+  bookings      Booking[]
+  messages      Message[]
+  wallet        Wallet?
+  notifications Notification[]
+
+  @@index([orgId])
+  @@map("users")
+}
+
+model Vehicle {
+  id                 String  @id @default(cuid())
+  userId             String
+  model              String
+  registrationNumber String
+  seatingCapacity    Int
+  fuelType           String  @default("Petrol")
+  // Drives the fuel-consumption + cost-per-km reports (PS 5.9).
+  mileageKmpl        Decimal @default(15.0) @db.Decimal(5, 2)
+  color              String?
+
+  // Admin > Vehicles > Status: approved or inactive for ride sharing.
+  isApproved Boolean  @default(true)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rides Ride[]
+
+  @@unique([userId, registrationNumber])
+  @@index([userId])
+  @@map("vehicles")
+}
+
+model SavedPlace {
+  id      String @id @default(cuid())
+  userId  String
+  label   String // "Home", "Office", ...
+  address String
+  lat     Float
+  lng     Float
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("saved_places")
+}
+
+// ---------------------------------------------------------------------- rides
+
+enum RideStatus {
+  PUBLISHED
+  STARTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Ride {
+  id        String @id @default(cuid())
+  orgId     String
+  driverId  String
+  vehicleId String
+
+  originLabel String
+  originLat   Float
+  originLng   Float
+  destLabel   String
+  destLat     Float
+  destLng     Float
+
+  departureAt DateTime
+  totalSeats  Int
+  // Decremented on booking so search can filter without an aggregate.
+  seatsLeft   Int
+  farePerSeat Decimal @db.Decimal(10, 2)
+
+  // Filled from OSRM at publish time; falls back to haversine if OSRM is down.
+  distanceKm    Decimal @db.Decimal(8, 2)
+  durationMin   Int
+  routeGeometry String? // encoded polyline
+
+  status RideStatus @default(PUBLISHED)
+
+  isRecurring    Boolean @default(false)
+  recurrenceDays Int[]   @default([]) // 0=Sun .. 6=Sat
+
+  // Safety: a rider can share a read-only live link with family. Random and
+  // per-ride so it reveals nothing about the org and dies with the trip.
+  shareToken String? @unique
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  org      Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  driver   User           @relation("driver", fields: [driverId], references: [id], onDelete: Cascade)
+  vehicle  Vehicle        @relation(fields: [vehicleId], references: [id])
+  bookings Booking[]
+  pings    LocationPing[]
+  messages Message[]
+
+  @@index([orgId, status, departureAt])
+  @@index([driverId])
+  @@map("rides")
+}
+
+enum BookingStatus {
+  BOOKED
+  CANCELLED
+  COMPLETED
+}
+
+model Booking {
+  id          String @id @default(cuid())
+  rideId      String
+  passengerId String
+
+  seats      Int
+  fareAmount Decimal @db.Decimal(10, 2)
+
+  pickupLabel String
+  pickupLat   Float
+  pickupLng   Float
+  dropLabel   String
+  dropLat     Float
+  dropLng     Float
+
+  status    BookingStatus @default(BOOKED)
+  createdAt DateTime      @default(now())
+
+  ride      Ride     @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  passenger User     @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+  payment   Payment?
+
+  @@unique([rideId, passengerId])
+  @@index([passengerId])
+  @@map("bookings")
+}
+
+// Live tracking (PS 5.5). Written only while a ride is STARTED/IN_PROGRESS.
+model LocationPing {
+  id         String   @id @default(cuid())
+  rideId     String
+  lat        Float
+  lng        Float
+  speedKmph  Float?
+  heading    Float?
+  recordedAt DateTime @default(now())
+
+  ride Ride @relation(fields: [rideId], references: [id], onDelete: Cascade)
+
+  @@index([rideId, recordedAt])
+  @@map("location_pings")
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  rideId    String
+  senderId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  ride   Ride @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([rideId, createdAt])
+  @@map("messages")
+}
+
+// ----------------------------------------------------------- payments, wallet
+
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+  WALLET
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model Payment {
+  id        String        @id @default(cuid())
+  bookingId String        @unique
+  amount    Decimal       @db.Decimal(10, 2)
+  method    PaymentMethod
+  status    PaymentStatus @default(PENDING)
+
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+
+  paidAt    DateTime?
+  createdAt DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model Wallet {
+  id      String  @id @default(cuid())
+  userId  String  @unique
+  balance Decimal @default(0) @db.Decimal(10, 2)
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+
+  @@map("wallets")
+}
+
+enum WalletTxnType {
+  CREDIT
+  DEBIT
+}
+
+model WalletTransaction {
+  id          String        @id @default(cuid())
+  walletId    String
+  amount      Decimal       @db.Decimal(10, 2)
+  type        WalletTxnType
+  description String
+  createdAt   DateTime      @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, createdAt])
+  @@map("wallet_transactions")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}

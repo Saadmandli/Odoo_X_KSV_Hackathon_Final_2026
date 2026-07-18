@@ -1,0 +1,27 @@
+# Render blueprint — the API only. The database lives on Neon (free forever;
+# Render's free Postgres expires 30 days after creation) and the frontend is a
+# static build on Vercel.
+#
+# Point Render at this repo with "New > Blueprint" and it provisions the
+# service from here rather than from dashboard clicks.
+services:
+  - type: web
+    name: carpool-api
+    runtime: node
+    plan: free
+    rootDir: server
+    # `prisma generate` runs via the postinstall hook. `migrate deploy` applies
+    # committed migrations to Neon — without it the live database has no tables.
+    buildCommand: npm install && npx prisma migrate deploy
+    startCommand: npm start
+    # Render pings this to decide the instance is live.
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CARPOOL_DATABASE_URL
+        sync: false # set in the dashboard — Neon pooled connection string
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false # the Vercel frontend URL, e.g. https://carpool.vercel.app

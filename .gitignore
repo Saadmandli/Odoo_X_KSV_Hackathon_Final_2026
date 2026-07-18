@@ -1,0 +1,58 @@
+# --- dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# --- build output
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# --- environment and secrets
+# Never commit these: they hold database credentials and the JWT signing key.
+.env
+.env.*
+!.env.example
+
+# --- logs and runtime noise
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+srv.log
+srv.err
+api.log
+api.err
+vite.log
+vite.err
+
+# --- editor and tooling
+.vscode/
+.idea/
+*.swp
+*.swo
+.history/
+
+# --- OS
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# --- deployment
+.vercel
+.render/
+
+# --- scratch
+tmp/
+temp/
+scratch/
+*.local
+
+# --- supplied briefing material, not source
+# Large binaries that belong to the organisers, not to this codebase.
+*.pdf
+*.png
+!client/public/*.png
