@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { CalendarDays, CarFront, ClipboardList, Route, Users } from "lucide-react";
 import { get } from "../lib/api";
 import { Avatar, EmptyState, RoleBadge, Spinner, StatusChip, money, when } from "../components/ui";
+import { buttonVariants } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Trips() {
   const [data, setData] = useState(null);
@@ -26,22 +28,12 @@ export default function Trips() {
         published are under Driving.
       </p>
 
-      <div className="mt-4 grid grid-cols-2 gap-1 rounded-xl2 border border-slate-200 bg-white p-1">
-        {[
-          ["rider", `Riding (${rider.length})`],
-          ["driver", `Driving (${driver.length})`],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`rounded-lg py-2 text-sm font-medium transition ${
-              tab === key ? "bg-brand-600 text-white" : "text-slate-600"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <Tabs value={tab} onValueChange={setTab} className="mt-4">
+        <TabsList className="grid grid-cols-2 w-full">
+          <TabsTrigger value="rider">{`Riding (${rider.length})`}</TabsTrigger>
+          <TabsTrigger value="driver">{`Driving (${driver.length})`}</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {list.length === 0 ? (
         <div className="mt-4">
@@ -54,7 +46,7 @@ export default function Trips() {
                 : "Publish a ride on a route you already drive and share the cost."
             }
             action={
-              <Link to="/dashboard" className="btn-secondary btn-sm">
+              <Link to="/dashboard" className={buttonVariants({ variant: "outline", size: "sm" })}>
                 {tab === "rider" ? "Find a ride" : "Offer a ride"}
               </Link>
             }

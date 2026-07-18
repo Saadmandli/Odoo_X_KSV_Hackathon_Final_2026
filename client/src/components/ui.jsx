@@ -1,4 +1,5 @@
 import { Loader2 } from "lucide-react";
+import { Sheet as ShadcnSheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 
 export function Avatar({ name = "?", color, size = 36 }) {
   const initials = name
@@ -162,20 +163,19 @@ export function Banner({ kind = "error", children }) {
 
 /** Bottom sheet on phones, centred dialog from tablet up. */
 export function Sheet({ open, onClose, title, children }) {
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-[1100] flex items-end sm:items-center sm:justify-center">
-      <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
-      <div className="safe-bottom relative w-full rounded-t-2xl bg-white shadow-sheet sm:max-w-md sm:rounded-2xl">
+    <ShadcnSheet open={open} onOpenChange={(val) => { if (!val) onClose(); }}>
+      <SheetContent side="bottom" className="safe-bottom w-full max-h-[90vh] overflow-y-auto p-4 sm:max-w-md sm:mx-auto">
         {title && (
-          <div className="border-b border-slate-200 px-4 py-3 text-[15px] font-semibold text-slate-900">
-            {title}
-          </div>
+          <SheetHeader className="border-b border-slate-200 pb-3 mb-3 text-left">
+            <SheetTitle className="text-[15px] font-semibold text-slate-900">{title}</SheetTitle>
+          </SheetHeader>
         )}
-        <div className="max-h-[75vh] overflow-y-auto p-4">{children}</div>
-      </div>
-    </div>
+        <div className="max-h-[75vh] overflow-y-auto">
+          {children}
+        </div>
+      </SheetContent>
+    </ShadcnSheet>
   );
 }
 
