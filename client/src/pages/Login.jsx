@@ -27,8 +27,8 @@ export default function Login() {
   };
 
   return (
-    <div className="safe-top safe-bottom flex min-h-full flex-col bg-white">
-      <div className="mx-auto flex w-full max-w-sm flex-1 flex-col px-5 pt-14 sm:justify-center sm:pt-0">
+    <div className="safe-top safe-bottom flex min-h-full items-center justify-center bg-white px-5 py-10">
+      <div className="w-full max-w-sm">
         <div className="mb-8">
           <Wordmark size="lg" />
           <p className="mt-1 text-[13px] font-medium tracking-wide text-brand-700">
@@ -101,7 +101,7 @@ export default function Login() {
           </Link>
         </p>
 
-        <div className="mt-auto pb-6 pt-10">
+        <div className="mt-10">
           <p className="mb-2 text-center text-xs font-medium uppercase tracking-wide text-slate-400">
             Reviewer access
           </p>

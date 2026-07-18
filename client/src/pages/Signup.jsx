@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { useAuth } from "../lib/auth";
-import { Banner } from "../components/ui";
+import { Banner, Wordmark } from "../components/ui";
 
 export default function Signup() {
   const { signup } = useAuth();
@@ -39,15 +39,18 @@ export default function Signup() {
   };
 
   return (
-    <div className="safe-top safe-bottom min-h-full bg-white">
-      <div className="mx-auto w-full max-w-sm px-5 pb-10 pt-6">
-        <Link
-          to="/login"
-          className="mb-6 inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
-          aria-label="Back to sign in"
-        >
-          <ArrowLeft size={19} />
-        </Link>
+    <div className="safe-top safe-bottom flex min-h-full items-center justify-center bg-white px-5 py-10">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 flex items-center gap-3">
+          <Link
+            to="/login"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+            aria-label="Back to sign in"
+          >
+            <ArrowLeft size={19} />
+          </Link>
+          <Wordmark />
+        </div>
 
         <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-slate-900">
           Create your account
