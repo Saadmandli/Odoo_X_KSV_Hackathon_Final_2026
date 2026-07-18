@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Car, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { get } from "../lib/api";
 import MapView from "../components/MapView";
-import { Spinner } from "../components/ui";
+import { Spinner, Wordmark } from "../components/ui";
 
 /**
  * Opened by whoever the rider shared the link with — no account, no sign-in.
@@ -45,11 +45,8 @@ export default function PublicTrack() {
 
   return (
     <div className="safe-top safe-bottom mx-auto min-h-full max-w-2xl px-4 py-5">
-      <div className="mb-4 flex items-center gap-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white">
-          <Car size={17} />
-        </span>
-        <span className="text-[17px] font-semibold tracking-tight text-slate-900">Carpool</span>
+      <div className="mb-4">
+        <Wordmark />
       </div>
 
       {data.active ? (

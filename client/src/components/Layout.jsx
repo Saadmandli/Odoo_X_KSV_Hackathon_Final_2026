@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { get, post } from "../lib/api";
-import { Avatar, Sheet } from "./ui";
+import { Avatar, CarbonChip, Sheet, Wordmark } from "./ui";
 
 // Five is the most a thumb can comfortably reach on a phone; the rest live
 // behind "More".
@@ -38,8 +38,17 @@ export default function Layout() {
   const navigate = useNavigate();
 
   const [notifications, setNotifications] = useState({ notifications: [], unread: 0 });
+  const [carbonKg, setCarbonKg] = useState(0);
   const [showBell, setShowBell] = useState(false);
   const [showMore, setShowMore] = useState(false);
+
+  // Read once per mount. Failing quietly is fine: the header should never break
+  // because a report could not be computed.
+  useEffect(() => {
+    get("/reports")
+      .then((d) => setCarbonKg(d.summary?.co2SavedKg ?? 0))
+      .catch(() => {});
+  }, []);
 
   // Light poll so a driver sees a new booking without refreshing.
   useEffect(() => {
@@ -65,19 +74,19 @@ export default function Layout() {
 
   return (
     <div className="flex min-h-full flex-col bg-surface-sunken">
-      <header className="safe-top sticky top-0 z-[900] border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="flex items-center gap-2 text-slate-900"
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white">
-              <Car size={17} />
-            </span>
-            <span className="text-[17px] font-semibold tracking-tight">Carpool</span>
+      <header className="safe-top sticky top-0 z-[900] bg-white">
+        {/* A hairline of brand green above the header: enough to colour the
+            whole page without tinting surfaces that need to stay readable. */}
+        <div className="h-[3px] bg-gradient-to-r from-brand-600 via-brand-500 to-brand-300" />
+
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 border-b border-slate-200 px-4">
+          <button onClick={() => navigate("/dashboard")} className="shrink-0">
+            <Wordmark />
           </button>
 
-          <nav className="ml-4 hidden flex-1 items-center gap-0.5 md:flex">
+          <CarbonChip kg={carbonKg} className="hidden sm:inline-flex" />
+
+          <nav className="ml-2 hidden flex-1 items-center gap-0.5 md:flex">
             {desktopNav.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
@@ -134,6 +143,14 @@ export default function Layout() {
             </button>
           </div>
         </div>
+
+        {/* On a phone the carbon figure gets its own strip rather than being
+            squeezed out of the header row. */}
+        {carbonKg > 0 && (
+          <div className="flex items-center justify-center border-b border-slate-200 bg-brand-50/70 py-1.5 sm:hidden">
+            <CarbonChip kg={carbonKg} className="border-0 bg-transparent px-0 py-0" />
+          </div>
+        )}
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-4 md:pb-8">

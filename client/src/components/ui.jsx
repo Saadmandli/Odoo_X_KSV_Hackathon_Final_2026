@@ -1,6 +1,62 @@
 import { Loader2 } from "lucide-react";
 import { Sheet as ShadcnSheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 
+/**
+ * The EcoMiles wordmark.
+ *
+ * Set as type rather than a drawn logo: "Eco" carries the brand green, "Miles"
+ * stays near-black, and the two sit on a single tightened baseline. The colour
+ * break does the work an icon would, and it stays crisp at any size and in
+ * plain text contexts where an image could not go.
+ */
+export function Wordmark({ size = "md", className = "" }) {
+  const scale = {
+    sm: "text-[15px]",
+    md: "text-[19px]",
+    lg: "text-[28px]",
+    xl: "text-[34px]",
+  }[size];
+
+  return (
+    <span
+      className={`${scale} font-semibold leading-none tracking-[-0.02em] ${className}`}
+      aria-label="EcoMiles"
+    >
+      <span className="text-brand-600">Eco</span>
+      <span className="text-slate-900">Miles</span>
+    </span>
+  );
+}
+
+/**
+ * Live carbon saved, shown in the header.
+ *
+ * The figure is real — it comes from completed trips, not a decoration — which
+ * is the whole point: the environmental claim is measured, not asserted.
+ */
+export function CarbonChip({ kg, className = "" }) {
+  if (!kg || kg <= 0) return null;
+
+  return (
+    <span
+      title={`${kg} kg of CO₂ not emitted, based on your completed shared trips`}
+      className={`inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-medium text-brand-800 ${className}`}
+    >
+      <LeafMark />
+      {kg < 1000 ? kg.toFixed(1) : Math.round(kg)} kg CO₂ saved
+    </span>
+  );
+}
+
+function LeafMark() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+      <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+      <path d="M2 21c0-3 1.85-5.36 5.08-6" />
+    </svg>
+  );
+}
+
 export function Avatar({ name = "?", color, size = 36 }) {
   const initials = name
     .split(" ")

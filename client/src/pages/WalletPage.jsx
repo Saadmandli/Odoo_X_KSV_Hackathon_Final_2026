@@ -54,7 +54,7 @@ export default function WalletPage() {
         keyId: order.keyId,
         orderId: order.orderId,
         amount: order.amount,
-        name: "Carpool",
+        name: "EcoMiles",
         description: "Wallet top-up",
         prefill: { name: user.name, email: user.email, contact: user.phone ?? "" },
       });

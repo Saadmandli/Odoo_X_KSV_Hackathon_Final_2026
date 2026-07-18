@@ -64,7 +64,7 @@ export default function Payment() {
         keyId: order.keyId,
         orderId: order.orderId,
         amount: order.amount,
-        name: "Carpool",
+        name: "EcoMiles",
         description: `Ride to ${booking.ride.destLabel.split(",")[0]}`,
         prefill: { name: user.name, email: user.email, contact: user.phone ?? "" },
       });

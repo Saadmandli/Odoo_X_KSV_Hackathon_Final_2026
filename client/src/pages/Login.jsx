@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Car, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../lib/auth";
-import { Banner } from "../components/ui";
+import { Banner, Wordmark } from "../components/ui";
 
 export default function Login() {
   const { login } = useAuth();
@@ -30,10 +30,12 @@ export default function Login() {
     <div className="safe-top safe-bottom flex min-h-full flex-col bg-white">
       <div className="mx-auto flex w-full max-w-sm flex-1 flex-col px-5 pt-14 sm:justify-center sm:pt-0">
         <div className="mb-8">
-          <span className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl2 bg-brand-600 text-white">
-            <Car size={24} />
-          </span>
-          <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-slate-900">
+          <Wordmark size="lg" />
+          <p className="mt-1 text-[13px] font-medium tracking-wide text-brand-700">
+            Share the drive. Cut the carbon.
+          </p>
+
+          <h1 className="mt-7 text-[26px] font-semibold leading-tight tracking-tight text-slate-900">
             Welcome back
           </h1>
           <p className="mt-1.5 text-[15px] text-slate-500">
