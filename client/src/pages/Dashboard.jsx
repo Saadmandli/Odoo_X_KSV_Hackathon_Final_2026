@@ -15,6 +15,10 @@ import { get, post } from "../lib/api";
 import LocationInput from "../components/LocationInput";
 import MapView from "../components/MapView";
 import { Avatar, Banner, EmptyState, money, when } from "../components/ui";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const DAYS = ["S", "M", "T", "W", "T", "F", "S"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -138,13 +142,15 @@ export default function Dashboard() {
   if (step === "route") {
     return (
       <div className="mx-auto max-w-2xl">
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => setStep("form")}
-          className="mb-3 inline-flex items-center gap-1.5 text-sm text-slate-600"
+          className="mb-3 pl-0 hover:bg-transparent text-slate-600"
         >
           <ArrowLeft size={16} />
           Back
-        </button>
+        </Button>
 
         <h1 className="text-xl font-semibold tracking-tight text-slate-900">Confirm your route</h1>
         <p className="mt-1 text-[15px] text-slate-500">
@@ -202,13 +208,13 @@ export default function Dashboard() {
           <Banner>{error}</Banner>
         </div>
 
-        <button
-          className="btn-primary mt-4 w-full"
+        <Button
+          className="mt-4 w-full"
           disabled={busy}
           onClick={mode === "find" ? findRides : publishRide}
         >
           {busy ? "Please wait" : mode === "find" ? "Search rides" : "Publish ride"}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -217,21 +223,23 @@ export default function Dashboard() {
   if (step === "results") {
     return (
       <div className="mx-auto max-w-2xl">
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => setStep("form")}
-          className="mb-3 inline-flex items-center gap-1.5 text-sm text-slate-600"
+          className="mb-3 pl-0 hover:bg-transparent text-slate-600"
         >
           <ArrowLeft size={16} />
           Change search
-        </button>
+        </Button>
 
         <div className="flex items-baseline justify-between gap-3">
           <h1 className="text-xl font-semibold tracking-tight text-slate-900">
             {rides.length} {rides.length === 1 ? "ride" : "rides"} available
           </h1>
-          <button onClick={findRides} className="text-sm font-medium text-brand-700" disabled={busy}>
+          <Button variant="link" onClick={findRides} className="h-auto p-0 font-medium text-primary" disabled={busy}>
             Refresh
-          </button>
+          </Button>
         </div>
         <p className="mt-1 truncate text-sm text-slate-500">
           {origin.label} to {dest.label}
@@ -248,15 +256,16 @@ export default function Dashboard() {
               title="No rides on this route yet"
               hint="Nobody is driving this way near your time. You could offer the ride instead."
               action={
-                <button
-                  className="btn-secondary btn-sm"
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => {
                     setMode("offer");
                     setStep("form");
                   }}
                 >
                   Offer this ride
-                </button>
+                </Button>
               }
             />
           </div>
@@ -312,13 +321,14 @@ export default function Dashboard() {
                   </p>
                 )}
 
-                <button
-                  className="btn-primary btn-sm mt-3 w-full"
+                <Button
+                  size="sm"
+                  className="mt-3 w-full"
                   disabled={busy || ride.seatsLeft < seats}
                   onClick={() => book(ride)}
                 >
                   Book {seats} {seats === 1 ? "seat" : "seats"}
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -330,25 +340,12 @@ export default function Dashboard() {
   // -------------------------------------------------------------- form step
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl2 border border-slate-200 bg-white p-1">
-        {[
-          ["find", "Find a ride"],
-          ["offer", "Offer a ride"],
-        ].map(([m, label]) => (
-          <button
-            key={m}
-            onClick={() => {
-              setMode(m);
-              setError("");
-            }}
-            className={`rounded-lg py-2.5 text-[15px] font-medium transition ${
-              mode === m ? "bg-brand-600 text-white" : "text-slate-600"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <Tabs value={mode} onValueChange={(val) => { setMode(val); setError(""); }} className="mb-4">
+        <TabsList className="grid grid-cols-2 w-full">
+          <TabsTrigger value="find">Find a ride</TabsTrigger>
+          <TabsTrigger value="offer">Offer a ride</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {/* The same employee does both. Saying so removes the most common
           confusion for anyone seeing the app for the first time. */}
@@ -379,29 +376,34 @@ export default function Dashboard() {
             />
           </div>
 
-          <button
+          <Button
+            variant="outline"
+            size="icon"
             onClick={swap}
             aria-label="Swap pickup and destination"
             className="absolute -top-1 right-0 flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-card"
             style={{ top: "42%" }}
           >
             <ArrowUpDown size={15} />
-          </button>
+          </Button>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Departure</label>
-            <input
+            <Input
               type="datetime-local"
-              className="field"
               value={departureAt}
               onChange={(e) => setDepartureAt(e.target.value)}
             />
           </div>
           <div>
             <label className="label">{mode === "find" ? "Seats needed" : "Seats offered"}</label>
-            <select className="field" value={seats} onChange={(e) => setSeats(Number(e.target.value))}>
+            <select
+              className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/15 disabled:cursor-not-allowed disabled:opacity-50"
+              value={seats}
+              onChange={(e) => setSeats(Number(e.target.value))}
+            >
               {[1, 2, 3, 4, 5, 6].map((n) => (
                 <option key={n} value={n}>
                   {n} {n === 1 ? "seat" : "seats"}
@@ -415,7 +417,11 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="label">Vehicle</label>
-              <select className="field" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
+              <select
+                className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/15 disabled:cursor-not-allowed disabled:opacity-50"
+                value={vehicleId}
+                onChange={(e) => setVehicleId(e.target.value)}
+              >
                 {vehicles.length === 0 && <option value="">No vehicle registered</option>}
                 {vehicles.map((v) => (
                   <option key={v.id} value={v.id}>
@@ -428,11 +434,11 @@ export default function Dashboard() {
               <label className="label">Fare per seat</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">₹</span>
-                <input
+                <Input
                   type="number"
                   inputMode="numeric"
                   min="0"
-                  className="field pl-7"
+                  className="pl-7"
                   value={fare}
                   onChange={(e) => setFare(e.target.value)}
                 />
@@ -451,35 +457,29 @@ export default function Dashboard() {
                   : "For a regular commute"}
               </span>
             </span>
-            <input
-              type="checkbox"
-              role="switch"
-              className="h-6 w-10 shrink-0 cursor-pointer appearance-none rounded-full bg-slate-300 transition checked:bg-brand-600"
+            <Switch
               checked={isRecurring}
-              onChange={(e) => setIsRecurring(e.target.checked)}
+              onCheckedChange={(checked) => setIsRecurring(checked)}
             />
           </label>
 
           {isRecurring && (
             <div className="mt-3 flex gap-1.5">
               {DAYS.map((d, i) => (
-                <button
+                <Button
                   key={i}
                   type="button"
+                  variant={recurrenceDays.includes(i) ? "default" : "secondary"}
                   aria-label={DAY_NAMES[i]}
                   onClick={() =>
                     setRecurrenceDays((days) =>
                       days.includes(i) ? days.filter((x) => x !== i) : [...days, i].sort()
                     )
                   }
-                  className={`h-9 flex-1 rounded-lg text-sm transition ${
-                    recurrenceDays.includes(i)
-                      ? "bg-brand-600 text-white"
-                      : "bg-slate-100 text-slate-600"
-                  }`}
+                  className="h-9 flex-1"
                 >
                   {d}
-                </button>
+                </Button>
               ))}
             </div>
           )}
@@ -488,21 +488,25 @@ export default function Dashboard() {
         {mode === "offer" && vehicles.length === 0 && (
           <Banner>
             Add a vehicle before offering a ride.{" "}
-            <button onClick={() => navigate("/vehicles")} className="font-medium underline">
+            <Button
+              variant="link"
+              onClick={() => navigate("/vehicles")}
+              className="h-auto p-0 font-medium underline text-primary"
+            >
               Add one now
-            </button>
+            </Button>
           </Banner>
         )}
 
         <Banner>{error}</Banner>
 
-        <button
-          className="btn-primary w-full"
+        <Button
+          className="w-full"
           onClick={confirmRoute}
           disabled={busy || (mode === "offer" && vehicles.length === 0)}
         >
           {busy ? "Working out the route" : mode === "find" ? "Search" : "Continue"}
-        </button>
+        </Button>
       </div>
 
       {savedPlaces.length > 0 && (
