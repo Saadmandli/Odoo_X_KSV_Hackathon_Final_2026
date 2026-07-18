@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
+import * as V from "../lib/validation.js";
 import { requireAuth, ah } from "../middleware/auth.js";
 import { getRoute, haversineKm } from "../lib/geo.js";
 import { planPickups, bookingOrderDistance } from "../lib/pickupPlan.js";
@@ -9,7 +10,7 @@ import { planPickups, bookingOrderDistance } from "../lib/pickupPlan.js";
 const router = Router();
 router.use(requireAuth);
 
-const point = z.object({ label: z.string().min(1), lat: z.number(), lng: z.number() });
+const point = V.point;
 
 // Two minutes of slack. A driver publishing "leaving now" spends a few seconds
 // on the form, and their device clock may differ slightly from the server's;
@@ -22,7 +23,8 @@ const DEPARTURE_GRACE_MS = 2 * 60 * 1000;
 // settings actually drive what a seat costs instead of sitting unused.
 router.post(
   "/route-preview",
-  ah(async (req, res) => {
+  ah(async (  
+    req, res) => {
     const parsed = z
       .object({ origin: point, dest: point, vehicleId: z.string().optional(), seats: z.number().optional() })
       .safeParse(req.body);
@@ -62,15 +64,30 @@ router.post(
   })
 );
 
+// A GPS fix. Coordinates are bounded, and the derived values are sanity-checked
+// rather than trusted: a browser reporting 4,000 km/h has misread a sensor, and
+// storing it would put an ETA of "arriving in 0 minutes" in front of a
+// passenger for the rest of the journey.
+const pingSchema = z.object({
+  lat: V.latitude,
+  lng: V.longitude,
+  speedKmph: z.number().min(0).max(300).nullish(),
+  heading: z.number().min(0).max(360).nullish(),
+  accuracyM: z.number().min(0).max(100000).nullish(),
+});
+
 const publishSchema = z.object({
   vehicleId: z.string(),
   origin: point,
   dest: point,
-  departureAt: z.string(),
-  seats: z.number().int().min(1).max(8),
-  farePerSeat: z.number().min(0),
+  departureAt: V.isoDateTime,
+  seats: z.number().int("Seats must be a whole number").min(1).max(8),
+  // Capped: this is cost-sharing, and a five-figure "fare" for a city commute
+  // is a typo or an attempt to game the fare guidance, never a real price.
+  farePerSeat: V.money(5000, "Fare"),
   isRecurring: z.boolean().optional(),
   recurrenceDays: z.array(z.number().int().min(0).max(6)).optional(),
+  womenOnly: z.boolean().optional(),
 });
 
 // ------------------------------------------------------------- publish a ride
@@ -106,6 +123,15 @@ router.post(
       });
     }
 
+    // Only a woman can run a women-only car. Checked here rather than trusted
+    // from the client, because this is the flag the whole feature rests on.
+    const womenOnly = d.womenOnly === true;
+    if (womenOnly && req.user.gender !== "FEMALE") {
+      return res.status(403).json({
+        error: "Only a driver who has set their gender to female can offer a women-only ride",
+      });
+    }
+
     const route = await getRoute(d.origin, d.dest);
 
     const ride = await prisma.ride.create({
@@ -128,6 +154,7 @@ router.post(
         routeGeometry: route.geometry,
         isRecurring: d.isRecurring ?? false,
         recurrenceDays: d.recurrenceDays ?? [],
+        womenOnly,
       },
       include: rideInclude,
     });
@@ -161,6 +188,13 @@ router.get(
     const from = new Date(Math.max(when.getTime() - windowHours * 3600_000, Date.now()));
     const to = new Date(when.getTime() + windowHours * 3600_000);
 
+    // Women-only rides are hidden from anyone who cannot book one, rather than
+    // shown and refused at the point of booking. Listing a ride someone is not
+    // allowed to take only advertises who is in the car.
+    const canSeeWomenOnly = req.user.gender === "FEMALE";
+    // A woman can additionally narrow the results to women-only rides.
+    const womenOnlyRequested = req.query.womenOnly === "true";
+
     const rides = await prisma.ride.findMany({
       where: {
         orgId: req.user.orgId,
@@ -168,6 +202,11 @@ router.get(
         seatsLeft: { gte: seats },
         departureAt: { gte: from, lte: to },
         driverId: { not: req.user.id }, // never match a user to their own ride
+        ...(canSeeWomenOnly
+          ? womenOnlyRequested
+            ? { womenOnly: true }
+            : {}
+          : { womenOnly: false }),
       },
       include: rideInclude,
       orderBy: { departureAt: "asc" },
@@ -304,10 +343,9 @@ router.post(
 router.post(
   "/:id/ping",
   ah(async (req, res) => {
-    const { lat, lng, speedKmph, heading } = req.body ?? {};
-    if (typeof lat !== "number" || typeof lng !== "number") {
-      return res.status(400).json({ error: "lat and lng are required" });
-    }
+    const parsed = pingSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+    const { lat, lng, speedKmph, heading, accuracyM } = parsed.data;
 
     const ride = await prisma.ride.findFirst({
       where: { id: req.params.id, driverId: req.user.id },
@@ -320,7 +358,7 @@ router.post(
     }
 
     await prisma.locationPing.create({
-      data: { rideId: ride.id, lat, lng, speedKmph, heading },
+      data: { rideId: ride.id, lat, lng, speedKmph, heading, accuracyM },
     });
     res.status(201).json({ ok: true });
   })
@@ -345,16 +383,19 @@ router.get(
       orderBy: { recordedAt: "desc" },
     });
 
-    let etaMinutes = null;
-    if (last) {
-      const remainingKm = haversineKm(last.lat, last.lng, ride.destLat, ride.destLng);
-      etaMinutes = Math.max(1, Math.round((remainingKm / 28) * 60));
-    }
+    const live = last ? liveProgress(ride, last) : {};
 
     res.json({
       status: ride.status,
-      position: last && { lat: last.lat, lng: last.lng, at: last.recordedAt },
-      etaMinutes,
+      position: last && {
+        lat: last.lat,
+        lng: last.lng,
+        at: last.recordedAt,
+        speedKmph: last.speedKmph,
+        heading: last.heading,
+        accuracyM: last.accuracyM,
+      },
+      ...live,
       destination: { lat: ride.destLat, lng: ride.destLng, label: ride.destLabel },
       origin: { lat: ride.originLat, lng: ride.originLng, label: ride.originLabel },
       routeGeometry: ride.routeGeometry,
@@ -577,5 +618,42 @@ function shapeRide(r) {
 
 const round1 = (n) => Math.round(n * 10) / 10;
 const round2 = (n) => Math.round(n * 100) / 100;
+
+/**
+ * How far along a trip is, from its most recent GPS fix.
+ *
+ * The ETA blends the vehicle's reported speed with a city average rather than
+ * trusting either alone. Reported speed on its own is worse than useless at a
+ * red light — it reads zero and the ETA becomes infinite — while a fixed
+ * average ignores a car that is genuinely stuck. Below walking pace the
+ * average wins; above it, the two are averaged so a fast run shortens the
+ * estimate without a momentary burst throwing it.
+ *
+ * Progress is measured against straight-line distances, so it is approximate
+ * by construction. It is used to draw a bar, not to bill anyone.
+ */
+function liveProgress(ride, last) {
+  const CITY_AVERAGE_KMPH = 28;
+
+  const remainingKm = haversineKm(last.lat, last.lng, ride.destLat, ride.destLng);
+  const totalKm = haversineKm(ride.originLat, ride.originLng, ride.destLat, ride.destLng);
+
+  const reported = Number(last.speedKmph) || 0;
+  const effectiveKmph =
+    reported > 5 ? (reported + CITY_AVERAGE_KMPH) / 2 : CITY_AVERAGE_KMPH;
+
+  return {
+    etaMinutes: Math.max(1, Math.round((remainingKm / effectiveKmph) * 60)),
+    remainingKm: round1(remainingKm),
+    // Clamped: a driver who overshoots or starts early would otherwise produce
+    // a bar that is negative or past its own end.
+    progressPercent: totalKm > 0
+      ? Math.min(100, Math.max(0, Math.round((1 - remainingKm / totalKm) * 100)))
+      : 0,
+    // How stale the fix is. The client shows this rather than implying a
+    // marker that has not moved in five minutes is a car that is not moving.
+    fixAgeSeconds: Math.max(0, Math.round((Date.now() - last.recordedAt.getTime()) / 1000)),
+  };
+}
 
 export default router;

@@ -81,12 +81,16 @@ async function main() {
     manager: extra.manager ?? "S. Naik",
     employeeCode: extra.employeeCode,
     role: extra.role ?? "EMPLOYEE",
+    gender: extra.gender ?? "UNDISCLOSED",
+    emergencyContactName: extra.emergencyContactName,
+    emergencyContactPhone: extra.emergencyContactPhone,
     avatarColor: extra.avatarColor ?? "#286b57",
     wallet: { create: { balance: extra.balance ?? 500 } },
   });
 
   const shrey = await prisma.user.create({
     data: employee("Shrey Naik", "shrey@northbridge.in", {
+      gender: "MALE",
       password: "admin123",
       role: "ADMIN",
       department: "Operations",
@@ -99,6 +103,7 @@ async function main() {
 
   const prayag = await prisma.user.create({
     data: employee("Prayag Panchani", "prayag@northbridge.in", {
+      gender: "MALE",
       employeeCode: "NB002",
       phone: "+919825011002",
       avatarColor: "#2563eb",
@@ -108,6 +113,7 @@ async function main() {
 
   const saad = await prisma.user.create({
     data: employee("Saad Mandli", "saad@northbridge.in", {
+      gender: "MALE",
       department: "Product",
       employeeCode: "NB003",
       phone: "+919825011003",
@@ -118,6 +124,9 @@ async function main() {
 
   const ishita = await prisma.user.create({
     data: employee("Ishita Rao", "ishita@northbridge.in", {
+      gender: "FEMALE",
+      emergencyContactName: "Anil Rao (father)",
+      emergencyContactPhone: "+919825044001",
       department: "Finance",
       officeLocation: "Ahmedabad",
       employeeCode: "NB004",
@@ -129,6 +138,7 @@ async function main() {
 
   const devansh = await prisma.user.create({
     data: employee("Devansh Mehta", "devansh@northbridge.in", {
+      gender: "MALE",
       department: "Sales",
       employeeCode: "NB005",
       phone: "+919825011005",
@@ -139,6 +149,9 @@ async function main() {
 
   const meera = await prisma.user.create({
     data: employee("Meera Joshi", "meera@northbridge.in", {
+      gender: "FEMALE",
+      emergencyContactName: "Ritu Joshi (sister)",
+      emergencyContactPhone: "+919825044002",
       department: "Design",
       employeeCode: "NB006",
       phone: "+919825011006",
@@ -186,10 +199,21 @@ async function main() {
   //   1. Prayag  — already pooled, shows pickup-order optimisation and repeats weekly
   //   2. Saad    — plenty of seats, the straightforward one to book on stage
   //   3. Meera   — a different route and a cheaper CNG fare, so results are not identical
+  //   4. Ishita  — women-only, so the safety filter has something to find and
+  //                the same search run as Prayag returns three results, not four
+  //
+  // Then three evening return runs. They exist so every demo account has a
+  // small handful of trips under both Riding and Driving rather than one lone
+  // row — enough to show the tabs work, few enough to read at a glance.
   const upcoming = [
     { driver: prayag, vehicle: vehicles.swift,  from: PLACES.bopal,        to: PLACES.giftCity, when: at(1, 9, 0),  seats: 4, fare: 110, recurring: [1, 2, 3, 4, 5] },
     { driver: saad,   vehicle: vehicles.i20,    from: PLACES.prahladNagar, to: PLACES.giftCity, when: at(1, 9, 30), seats: 3, fare: 95 },
     { driver: meera,  vehicle: vehicles.ertiga, from: PLACES.adalaj,       to: PLACES.giftCity, when: at(1, 8, 45), seats: 5, fare: 80 },
+    { driver: ishita, vehicle: vehicles.nexon,  from: PLACES.vastrapur,    to: PLACES.giftCity, when: at(1, 9, 15), seats: 3, fare: 105, womenOnly: true },
+
+    { driver: saad,   vehicle: vehicles.i20,    from: PLACES.giftCity,     to: PLACES.prahladNagar, when: at(1, 18, 30), seats: 4, fare: 95 },
+    { driver: prayag, vehicle: vehicles.swift,  from: PLACES.giftCity,     to: PLACES.bopal,        when: at(1, 18, 45), seats: 4, fare: 110 },
+    { driver: ishita, vehicle: vehicles.nexon,  from: PLACES.giftCity,     to: PLACES.vastrapur,    when: at(2, 9, 0),   seats: 4, fare: 100 },
   ];
 
   const created = [];
@@ -211,6 +235,7 @@ async function main() {
           durationMin: minutesFor(km),
           isRecurring: Boolean(r.recurring),
           recurrenceDays: r.recurring ?? [],
+          womenOnly: Boolean(r.womenOnly),
         },
       })
     );
@@ -242,6 +267,39 @@ async function main() {
     data: { seatsLeft: pooled.totalSeats - 3 },
   });
 
+  // Seats on the evening runs, so Riding is not empty for the people who are
+  // driving in the morning. Everyone ends up with a few trips on both sides,
+  // which is the point the two tabs are making: the same account does both.
+  // Each of these rides keeps at least one seat free, so a booking can still be
+  // made live on stage without first cancelling someone.
+  const eveningBookings = [
+    [created[4], prayag, PLACES.giftCity], // Saad drives home, Prayag rides
+    [created[4], meera, PLACES.giftCity],
+    [created[4], ishita, PLACES.giftCity],
+    [created[5], saad, PLACES.giftCity], // Prayag drives home, Saad rides
+    [created[5], devansh, PLACES.giftCity],
+    [created[5], meera, PLACES.giftCity],
+    [created[6], prayag, PLACES.giftCity], // Ishita's morning-after run
+    [created[6], devansh, PLACES.giftCity],
+  ];
+
+  for (const [ride, rider, pickup] of eveningBookings) {
+    await prisma.booking.create({
+      data: {
+        rideId: ride.id,
+        passengerId: rider.id,
+        seats: 1,
+        fareAmount: Number(ride.farePerSeat),
+        pickupLabel: pickup.label, pickupLat: pickup.lat, pickupLng: pickup.lng,
+        dropLabel: ride.destLabel, dropLat: ride.destLat, dropLng: ride.destLng,
+      },
+    });
+    await prisma.ride.update({
+      where: { id: ride.id },
+      data: { seatsLeft: { decrement: 1 } },
+    });
+  }
+
   await prisma.notification.create({
     data: {
       userId: prayag.id,
@@ -249,6 +307,24 @@ async function main() {
       body: "Devansh, Ishita and Saad have booked seats for tomorrow morning.",
     },
   });
+
+  // ------------------------------------------------------ organisation chat
+  // A short thread that shows what the channel is for: asking for a lift
+  // before a ride exists to book.
+  const minutesAgo = (m) => new Date(Date.now() - m * 60_000);
+  const thread = [
+    [devansh, "Anyone driving towards GIFT City tomorrow around 9? Adalaj side.", 180],
+    [prayag, "Yes, leaving Bopal at 9. I can swing past Adalaj, it is barely a detour.", 168],
+    [devansh, "That would be great, booking now. Thanks!", 165],
+    [ishita, "Reminder: SG Highway had roadworks near Thaltej this morning, leave 10 minutes early.", 95],
+    [meera, "Ertiga has 5 seats free on the Adalaj run if anyone needs one this week.", 40],
+  ];
+
+  for (const [sender, body, ago] of thread) {
+    await prisma.orgMessage.create({
+      data: { orgId: org.id, senderId: sender.id, body, createdAt: minutesAgo(ago) },
+    });
+  }
 
   // ------------------------------------------------ history for the reports
   // Spread across six months so the efficiency trend has a real line, and
@@ -270,10 +346,19 @@ async function main() {
 
   let completed = 0;
   let unpaid = null;
+  // Counts trips driven by a woman, so every second one can be women-only.
+  // Deriving that from the week number instead kept colliding with the
+  // expressions that pick the driver and the riders.
+  let femaleDriven = 0;
 
-  for (let week = 24; week >= 1; week--) {
-    // Two trips a week early on, rising to three: participation grows over time.
-    const tripsThisWeek = week > 12 ? 1 : 2;
+  // One trip a fortnight across six months. Twelve completed journeys is the
+  // smallest history that still does its job: the efficiency trend has enough
+  // points to be a line rather than a dot, every driver appears more than once
+  // in the cost breakdown, and each demo account keeps two or three trips in
+  // Ride History — few enough to read on stage, unlike the thirty-six that
+  // buried the screen before.
+  for (let week = 24; week >= 1; week -= 2) {
+    const tripsThisWeek = 1;
 
     for (let n = 0; n < tripsThisWeek; n++) {
       const [driver, vehicle] = drivers[(week + n) % drivers.length];
@@ -281,6 +366,16 @@ async function main() {
       const km = estimateKm(from, to);
       const fare = 80 + ((week + n) % 4) * 15;
       const departedAt = at(-week * 7 - n, n === 0 ? 9 : 18, 15);
+
+      // Every second trip driven by a woman ran women-only, so the safety
+      // report shows real take-up rather than one upcoming example.
+      //
+      // Counted rather than derived from the week: any modulus of `week`
+      // collides with the expression that picks the driver, which is how an
+      // earlier version selected a male driver every time and silently
+      // produced no women-only trips at all.
+      if (driver.gender === "FEMALE") femaleDriven++;
+      const womenOnly = driver.gender === "FEMALE" && femaleDriven % 2 === 1;
 
       const ride = await prisma.ride.create({
         data: {
@@ -298,11 +393,22 @@ async function main() {
           status: "COMPLETED",
           startedAt: departedAt,
           completedAt: new Date(departedAt.getTime() + minutesFor(km) * 60_000),
+          womenOnly,
         },
       });
 
-      // Two riders per trip, never the driver.
-      const chosen = riders.filter((r) => r.id !== driver.id).slice((week + n) % 2, ((week + n) % 2) + 2);
+      // Two riders per trip, never the driver. A women-only trip draws from the
+      // women alone — seeding one with a man aboard would contradict the rule
+      // the rest of the system enforces.
+      const pool = riders.filter(
+        (r) => r.id !== driver.id && (!womenOnly || r.gender === "FEMALE")
+      );
+      // The offset rotates so the same two people are not in every car. It is
+      // derived from the trip index rather than the week, because the loop now
+      // steps a fortnight at a time and `week % 2` is constant — which left
+      // Devansh, the one rider with no vehicle of his own, in no history at all.
+      const offset = completed % Math.max(1, pool.length - 1);
+      const chosen = womenOnly ? pool : pool.slice(offset, offset + 2);
 
       for (const rider of chosen) {
         const booking = await prisma.booking.create({
@@ -319,7 +425,11 @@ async function main() {
 
         // Leave the single most recent fare unpaid so the payment screen has
         // something real to demonstrate.
-        if (week === 1 && n === 1 && rider.id === saad.id && !unpaid) {
+        //
+        // Keyed on "the last trip in the loop" rather than a specific week
+        // number: the loop now steps a fortnight at a time, so week 1 is never
+        // reached and a hard-coded week would silently leave every fare paid.
+        if (week === 2 && rider.id === saad.id && !unpaid) {
           unpaid = booking;
           continue;
         }
@@ -350,6 +460,44 @@ async function main() {
 
       completed++;
     }
+  }
+
+  // ------------------------------------------------------------------- SOS
+  // Two closed incidents so the safety dashboard opens with a response-time
+  // figure and a visible history, rather than an empty state that says nothing
+  // about how the org handles them. Nothing is left ACTIVE: an alert that is
+  // already flashing when the page loads would misrepresent the demo, and the
+  // live one should be the one raised on stage.
+  const sosSeed = [
+    {
+      user: meera,
+      hoursAgo: 52,
+      resolvedAfterMin: 4,
+      note: "Driver took an unfamiliar turn near Adalaj. Resolved — roadworks diversion.",
+    },
+    {
+      user: ishita,
+      hoursAgo: 19,
+      resolvedAfterMin: 7,
+      note: "Felt unwell on the way to GIFT City and wanted someone to know.",
+    },
+  ];
+
+  for (const s of sosSeed) {
+    const raisedAt = new Date(Date.now() - s.hoursAgo * 3600_000);
+    await prisma.sosAlert.create({
+      data: {
+        orgId: org.id,
+        userId: s.user.id,
+        lat: PLACES.giftCity.lat + 0.01,
+        lng: PLACES.giftCity.lng - 0.01,
+        note: s.note,
+        status: "RESOLVED",
+        createdAt: raisedAt,
+        resolvedAt: new Date(raisedAt.getTime() + s.resolvedAfterMin * 60_000),
+        resolvedBy: shrey.name,
+      },
+    });
   }
 
   console.log(`

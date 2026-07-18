@@ -1,8 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarDays, CarFront, ClipboardList, Route, Users } from "lucide-react";
+import { CalendarDays, CarFront, Route, Users } from "lucide-react";
 import { get } from "../lib/api";
-import { Avatar, EmptyState, RoleBadge, Spinner, StatusChip, money, when } from "../components/ui";
+import { RideTogetherArt } from "../components/illustrations";
+import {
+  Avatar,
+  EmptyState,
+  RoleBadge,
+  Spinner,
+  StatusChip,
+  WomenOnlyBadge,
+  money,
+  when,
+} from "../components/ui";
 import { buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -38,7 +48,7 @@ export default function Trips() {
       {list.length === 0 ? (
         <div className="mt-4">
           <EmptyState
-            icon={ClipboardList}
+            art={<RideTogetherArt className="w-full" />}
             title={tab === "rider" ? "No booked rides" : "You have not offered a ride yet"}
             hint={
               tab === "rider"
@@ -70,9 +80,10 @@ function RiderCard({ booking }) {
 
   return (
     <Link to={`/trips/${ride.id}`} className="card block p-4 transition hover:shadow-lift">
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <RoleBadge role="riding" size="sm" />
         <StatusChip status={needsPayment ? "PENDING" : ride.status} />
+        {ride.womenOnly && <WomenOnlyBadge size="sm" />}
       </div>
 
       <div className="flex items-center gap-3">
@@ -109,9 +120,12 @@ function DriverCard({ ride }) {
 
   return (
     <Link to={`/trips/${ride.id}`} className="card block p-4 transition hover:shadow-lift">
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <RoleBadge role="driving" size="sm" />
         <StatusChip status={ride.status} />
+        {/* The driver needs this most of all: it is the setting they chose,
+            and the only place they can confirm it actually took effect. */}
+        {ride.womenOnly && <WomenOnlyBadge size="sm" />}
       </div>
 
       <div className="flex items-center gap-2">

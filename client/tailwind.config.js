@@ -39,23 +39,24 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Deep green reads as "shared, sustainable transport" without being the
-        // default framework blue every other project ships with.
+        // One green for the whole product. This is Tailwind's emerald scale, so
+        // `brand-600` and `emerald-600` render identically — screens written
+        // against either name now match instead of clashing.
         brand: {
-          50: "#f0f7f4",
-          100: "#dbeee5",
-          200: "#b9dccd",
-          300: "#8cc3ae",
-          400: "#5aa38b",
-          500: "#3a866e",
-          600: "#286b57",
-          700: "#215647",
-          800: "#1c453a",
-          900: "#183a31",
+          50: "#ecfdf5",
+          100: "#d1fae5",
+          200: "#a7f3d0",
+          300: "#6ee7b7",
+          400: "#34d399",
+          500: "#10b981",
+          600: "#059669",
+          700: "#047857",
+          800: "#065f46",
+          900: "#064e3b",
         },
         surface: {
           DEFAULT: "#ffffff",
-          sunken: "#f5f6f7",
+          sunken: "#f6f8f9",
           raised: "#fbfcfc",
         },
       },
@@ -63,9 +64,11 @@ export default {
         sans: ["Inter Variable", "Inter", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
       },
       boxShadow: {
-        card: "0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06)",
-        lift: "0 4px 12px rgba(16, 24, 40, 0.08)",
-        sheet: "0 -4px 16px rgba(16, 24, 40, 0.08)",
+        // Soft and layered rather than a single hard drop, so cards read as
+        // raised paper instead of stickers.
+        card: "0 1px 2px rgba(16,24,40,.04), 0 4px 12px -4px rgba(16,24,40,.06)",
+        lift: "0 8px 24px -8px rgba(16,24,40,.12), 0 2px 6px -2px rgba(16,24,40,.06)",
+        sheet: "0 -8px 32px -8px rgba(16,24,40,.14)",
       },
       borderRadius: {
         lg: "var(--radius)",

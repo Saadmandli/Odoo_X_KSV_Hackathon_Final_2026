@@ -1,18 +1,31 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
+import * as V from "../lib/validation.js";
 import { requireAuth, ah } from "../middleware/auth.js";
 
 const router = Router();
 router.use(requireAuth);
 
+// Constrained to the fuels the fare maths knows about. A free-string fuel type
+// reads fine on screen and then silently fails to match anything downstream.
+const FUEL_TYPES = ["Petrol", "Diesel", "CNG", "Electric", "Hybrid"];
+
 const vehicleSchema = z.object({
-  model: z.string().min(2, "Vehicle model is required"),
-  registrationNumber: z.string().min(4, "Registration number is required"),
-  seatingCapacity: z.number().int().min(1).max(8),
-  fuelType: z.string().optional(),
-  mileageKmpl: z.number().min(1).max(60).optional(),
-  color: z.string().optional(),
+  model: V.text(40, "Vehicle model"),
+  registrationNumber: V.registrationNumber,
+  seatingCapacity: z
+    .number()
+    .int("Seats must be a whole number")
+    .min(1, "A vehicle needs at least one seat")
+    .max(8, "A vehicle cannot have more than 8 seats"),
+  fuelType: z.enum(FUEL_TYPES).optional(),
+  mileageKmpl: z
+    .number()
+    .min(1, "Mileage must be at least 1 km/l")
+    .max(60, "Mileage above 60 km/l is not realistic")
+    .optional(),
+  color: V.optionalText(20),
 });
 
 router.get(
@@ -32,7 +45,8 @@ router.post(
     const parsed = vehicleSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
-    const registrationNumber = parsed.data.registrationNumber.toUpperCase().replace(/\s+/g, "");
+    // Already uppercased and stripped by the validator.
+    const { registrationNumber } = parsed.data;
     const existing = await prisma.vehicle.findFirst({
       where: { userId: req.user.id, registrationNumber },
     });

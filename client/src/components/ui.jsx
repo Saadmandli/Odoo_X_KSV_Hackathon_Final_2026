@@ -1,5 +1,7 @@
 import { Loader2 } from "lucide-react";
 import { Sheet as ShadcnSheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { useIsDesktop } from "../lib/useMediaQuery";
 
 /**
  * The EcoMiles wordmark.
@@ -9,21 +11,28 @@ import { Sheet as ShadcnSheet, SheetContent, SheetHeader, SheetTitle } from "./u
  * break does the work an icon would, and it stays crisp at any size and in
  * plain text contexts where an image could not go.
  */
-export function Wordmark({ size = "md", className = "" }) {
+export function Wordmark({ size = "md", tone = "dark", className = "" }) {
   const scale = {
     sm: "text-[17px]",
     md: "text-[23px]",
     lg: "text-[30px]",
     xl: "text-[38px]",
+    "2xl": "text-[46px]",
   }[size];
+
+  // On a dark panel the near-black half of the mark disappears, so "Miles"
+  // becomes white and "Eco" lifts to a tint that still reads as the brand
+  // green against it. Same two-tone idea, inverted for the surface.
+  const [eco, miles] =
+    tone === "light" ? ["text-brand-300", "text-white"] : ["text-brand-700", "text-slate-950"];
 
   return (
     <span
       className={`${scale} font-black leading-none tracking-tight ${className}`}
       aria-label="EcoMiles"
     >
-      <span className="text-brand-700">Eco</span>
-      <span className="text-slate-950">Miles</span>
+      <span className={eco}>Eco</span>
+      <span className={miles}>Miles</span>
     </span>
   );
 }
@@ -57,6 +66,34 @@ function LeafMark() {
   );
 }
 
+/**
+ * Marks a ride as women-only.
+ *
+ * Violet rather than the brand green: this is a different kind of fact from
+ * the status chips beside it, and it should not be scanned past as one more
+ * green pill. The rule itself is enforced on the server — this only reports it.
+ */
+export function WomenOnlyBadge({ size = "md" }) {
+  const pad = size === "sm" ? "px-2 py-0.5 text-[10.5px]" : "px-2.5 py-1 text-[11px]";
+  return (
+    <span
+      title="Only women can book this ride. Set by the driver."
+      className={`inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 font-semibold text-violet-700 ${pad}`}
+    >
+      <ShieldIcon />
+      Women only
+    </span>
+  );
+}
+
+function ShieldIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+    </svg>
+  );
+}
+
 export function Avatar({ name = "?", color, size = 36 }) {
   const initials = name
     .split(" ")
@@ -85,13 +122,25 @@ export function Spinner({ label }) {
   );
 }
 
-export function EmptyState({ icon: Icon, title, hint, action }) {
+/**
+ * Nothing to show yet.
+ *
+ * Takes either an `art` node — a drawn illustration, for the screens someone
+ * lands on with an empty account — or a plain `icon`, for the smaller and more
+ * incidental empties. A blank card reads as a page that failed to load; a
+ * drawn one reads as a state the product expected.
+ */
+export function EmptyState({ icon: Icon, art, title, hint, action }) {
   return (
     <div className="card flex flex-col items-center gap-3 px-6 py-12 text-center">
-      {Icon && (
-        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-          <Icon size={20} />
-        </span>
+      {art ? (
+        <div className="w-full max-w-[190px]">{art}</div>
+      ) : (
+        Icon && (
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+            <Icon size={20} />
+          </span>
+        )
       )}
       <div>
         <p className="font-medium text-slate-800">{title}</p>
@@ -219,18 +268,49 @@ export function Banner({ kind = "error", children }) {
 }
 
 /** Bottom sheet on phones, centred dialog from tablet up. */
+/**
+ * Bottom sheet on phones, centred dialog on desktop.
+ *
+ * A panel rising from the bottom edge is the natural pattern for a thumb and
+ * the wrong one for a mouse — on a wide screen it reads as a mobile component
+ * that escaped. Both variants live here so every dialog in the app behaves
+ * correctly without each screen deciding for itself.
+ */
 export function Sheet({ open, onClose, title, children }) {
+  const isDesktop = useIsDesktop();
+  const close = (val) => {
+    if (!val) onClose();
+  };
+
+  if (isDesktop) {
+    return (
+      <Dialog open={open} onOpenChange={close}>
+        {/* p-0/gap-0 so the header can span the full width with its own rule;
+            the primitive's default padding would inset it. */}
+        <DialogContent className="max-h-[85vh] max-w-lg gap-0 overflow-y-auto p-0">
+          {title && (
+            <DialogHeader className="border-b border-slate-200 px-5 py-4 text-left">
+              <DialogTitle className="text-[17px] font-semibold text-slate-900">{title}</DialogTitle>
+            </DialogHeader>
+          )}
+          <div className="px-5 py-4">{children}</div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
-    <ShadcnSheet open={open} onOpenChange={(val) => { if (!val) onClose(); }}>
-      <SheetContent side="bottom" className="safe-bottom w-full max-h-[90vh] overflow-y-auto p-4 sm:max-w-md sm:mx-auto">
+    <ShadcnSheet open={open} onOpenChange={close}>
+      <SheetContent
+        side="bottom"
+        className="safe-bottom max-h-[90vh] w-full overflow-y-auto rounded-t-2xl p-0"
+      >
         {title && (
-          <SheetHeader className="border-b border-slate-200 pb-3 mb-3 text-left">
-            <SheetTitle className="text-[15px] font-semibold text-slate-900">{title}</SheetTitle>
+          <SheetHeader className="border-b border-slate-200 px-4 py-3.5 text-left">
+            <SheetTitle className="text-[16px] font-semibold text-slate-900">{title}</SheetTitle>
           </SheetHeader>
         )}
-        <div className="max-h-[75vh] overflow-y-auto">
-          {children}
-        </div>
+        <div className="max-h-[75vh] overflow-y-auto px-4 py-4">{children}</div>
       </SheetContent>
     </ShadcnSheet>
   );

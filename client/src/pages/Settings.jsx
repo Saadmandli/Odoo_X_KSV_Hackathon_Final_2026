@@ -12,8 +12,9 @@ import {
   Trash2,
   Wallet,
 } from "lucide-react";
-import { del, get, post } from "../lib/api";
+import { del, get, post, put } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { filterName, filterPhone } from "../lib/inputs";
 import LocationInput from "../components/LocationInput";
 import { Avatar, Banner, Sheet, Spinner } from "../components/ui";
 
@@ -84,6 +85,8 @@ export default function Settings() {
           <div className="mt-0.5 text-xs text-brand-700">{org?.name}</div>
         </div>
       </div>
+
+      <SafetyProfile />
 
       <p className="mb-2 mt-6 px-1 text-xs font-medium uppercase tracking-wide text-slate-400">
         Shortcuts
@@ -188,5 +191,128 @@ export default function Settings() {
         </form>
       </Sheet>
     </div>
+  );
+}
+
+const GENDER_CHOICES = [
+  { value: "FEMALE", label: "Female" },
+  { value: "MALE", label: "Male" },
+  { value: "UNDISCLOSED", label: "Prefer not to say" },
+];
+
+/**
+ * Safety details: gender, which gates women-only travel, and the contact to
+ * reach if this person raises an SOS.
+ *
+ * Both are optional and both say plainly what they are used for. Asking for
+ * gender without explaining why it is being asked is what makes a field like
+ * this feel intrusive, so the reason sits directly under the control.
+ */
+function SafetyProfile() {
+  const { user, refresh } = useAuth();
+  const [form, setForm] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  // Seeded from the session once it has resolved, then owned locally so typing
+  // is not fighting a re-render from the auth context.
+  useEffect(() => {
+    if (user && !form) {
+      setForm({
+        gender: user.gender ?? "UNDISCLOSED",
+        emergencyContactName: user.emergencyContactName ?? "",
+        emergencyContactPhone: user.emergencyContactPhone ?? "",
+      });
+    }
+  }, [user, form]);
+
+  if (!form) return null;
+
+  const set = (k) => (v) => {
+    setForm({ ...form, [k]: v });
+    setSaved(false);
+  };
+
+  const save = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await put("/auth/me", form);
+      await refresh();
+      setSaved(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <p className="mb-2 mt-6 px-1 text-xs font-medium uppercase tracking-wide text-slate-400">
+        Safety
+      </p>
+
+      <form onSubmit={save} className="card space-y-4 p-4">
+        <div>
+          <label className="label">Gender</label>
+          <div className="grid grid-cols-3 gap-2">
+            {GENDER_CHOICES.map((c) => (
+              <button
+                key={c.value}
+                type="button"
+                onClick={() => set("gender")(c.value)}
+                className={`min-h-[42px] rounded-xl border px-2 text-[13px] font-semibold transition ${
+                  form.gender === c.value
+                    ? "border-brand-500 bg-brand-50 text-brand-800 ring-4 ring-brand-500/10"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-brand-300"
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+            Used only to match women-only rides. Choosing “Prefer not to say” keeps everything
+            else exactly as it is.
+          </p>
+        </div>
+
+        <div className="border-t border-slate-100 pt-4">
+          <label className="label" htmlFor="ec-name">
+            Emergency contact
+          </label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input
+              id="ec-name"
+              className="field"
+              placeholder="Name"
+              value={form.emergencyContactName}
+              onChange={(e) => set("emergencyContactName")(filterName(e.target.value))}
+            />
+            <input
+              className="field"
+              type="tel"
+              inputMode="tel"
+              placeholder="Phone"
+              value={form.emergencyContactPhone}
+              onChange={(e) => set("emergencyContactPhone")(filterPhone(e.target.value))}
+            />
+          </div>
+          <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+            Shown to your administrator only if you raise an SOS during a trip.
+          </p>
+        </div>
+
+        <Banner>{error}</Banner>
+        {saved && <Banner kind="success">Saved.</Banner>}
+
+        <button className="btn-primary w-full" disabled={busy}>
+          {busy ? "Saving…" : "Save safety details"}
+        </button>
+      </form>
+    </>
   );
 }

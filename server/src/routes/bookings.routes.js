@@ -1,17 +1,17 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
+import * as V from "../lib/validation.js";
 import { requireAuth, ah } from "../middleware/auth.js";
 
 const router = Router();
 router.use(requireAuth);
 
-const point = z.object({ label: z.string().min(1), lat: z.number(), lng: z.number() });
 const bookSchema = z.object({
-  rideId: z.string(),
-  seats: z.number().int().min(1).max(8),
-  pickup: point,
-  drop: point,
+  rideId: z.string().min(1, "A ride is required"),
+  seats: z.number().int("Seats must be a whole number").min(1).max(8),
+  pickup: V.point,
+  drop: V.point,
 });
 
 router.post(
@@ -35,6 +35,12 @@ router.post(
         // depart between reading it and decrementing seats.
         if (ride.departureAt.getTime() < Date.now()) {
           throw new HttpError(409, "This ride has already departed");
+        }
+        // The women-only guarantee is kept here, not in search. Search decides
+        // what is shown; this decides what can actually happen, and a booking
+        // can be posted directly with a ride id that was never on screen.
+        if (ride.womenOnly && req.user.gender !== "FEMALE") {
+          throw new HttpError(403, "This is a women-only ride");
         }
 
         const claimed = await tx.ride.updateMany({
@@ -113,14 +119,30 @@ router.post(
 router.get(
   "/my-trips",
   ah(async (req, res) => {
+    // My Trips is the list of things still to do, not an archive — Ride History
+    // is the archive. A finished, settled trip appearing in both meant this
+    // screen grew forever and buried the two or three trips that actually
+    // needed attention.
+    //
+    // A completed trip stays here while its fare is unpaid, because that is
+    // still an outstanding action for the passenger.
     const [asPassenger, asDriver] = await Promise.all([
       prisma.booking.findMany({
-        where: { passengerId: req.user.id, status: { in: ["BOOKED", "COMPLETED"] } },
+        where: {
+          passengerId: req.user.id,
+          OR: [
+            { status: "BOOKED" },
+            {
+              status: "COMPLETED",
+              OR: [{ payment: null }, { payment: { status: { not: "COMPLETED" } } }],
+            },
+          ],
+        },
         include: bookingInclude,
         orderBy: { createdAt: "desc" },
       }),
       prisma.ride.findMany({
-        where: { driverId: req.user.id, status: { notIn: ["CANCELLED"] } },
+        where: { driverId: req.user.id, status: { in: ["PUBLISHED", "STARTED", "IN_PROGRESS"] } },
         include: {
           vehicle: true,
           bookings: {

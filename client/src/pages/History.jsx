@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { CarFront, History as HistoryIcon, Route } from "lucide-react";
+import { CarFront, Route } from "lucide-react";
+import { EmptyRoadArt } from "../components/illustrations";
 import { get } from "../lib/api";
-import { Avatar, EmptyState, RoleBadge, Spinner, money, when } from "../components/ui";
+import { Avatar, EmptyState, RoleBadge, Spinner, WomenOnlyBadge, money, when } from "../components/ui";
 
 export default function History() {
   const [data, setData] = useState(null);
@@ -47,7 +48,7 @@ export default function History() {
       {entries.length === 0 ? (
         <div className="mt-4">
           <EmptyState
-            icon={HistoryIcon}
+            art={<EmptyRoadArt className="w-full" />}
             title="Nothing here yet"
             hint="Completed trips will appear here once you have taken your first ride."
             action={
@@ -79,8 +80,9 @@ export default function History() {
                 to={`/trips/${e.ride.id}`}
                 className="card block p-4 transition hover:shadow-lift"
               >
-                <div className="mb-3 flex items-center gap-2">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
                   <RoleBadge role={e.role} size="sm" />
+                  {e.ride.womenOnly && <WomenOnlyBadge size="sm" />}
                   <span className="ml-auto text-xs text-slate-500">{when(e.at)}</span>
                 </div>
 

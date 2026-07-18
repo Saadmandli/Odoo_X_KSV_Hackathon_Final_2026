@@ -99,51 +99,170 @@
   }
 }
 
+/* One definition per element. Every screen uses these classes, so the product
+   is restyled from here rather than by editing twenty files — which is how the
+   design drifted apart in the first place. */
 @layer components {
   .card {
-    @apply bg-white border border-slate-200 rounded-xl2 shadow-card;
+    @apply bg-white border border-slate-200/90 rounded-2xl shadow-card
+           transition-shadow duration-200;
+  }
+  .card-hover {
+    @apply hover:shadow-lift hover:border-slate-300/90;
   }
 
   .field {
-    @apply w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-[15px]
-           text-slate-900 placeholder:text-slate-400 outline-none transition
-           focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15;
+    @apply w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3.5 py-3
+           text-[15px] font-medium text-slate-900 placeholder:text-slate-400
+           outline-none transition-all duration-200
+           focus:border-brand-500 focus:bg-white focus:ring-4 focus:ring-brand-500/10;
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg text-[15px] font-medium
-           transition select-none disabled:opacity-45 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl text-[15px] font-semibold
+           transition-all duration-200 select-none
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none;
     /* 44px is the minimum comfortable touch target on a phone. */
     min-height: 44px;
-    padding: 0 1rem;
+    padding: 0 1.25rem;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800;
+    @apply btn bg-gradient-to-r from-brand-600 to-brand-700 text-white
+           shadow-md shadow-brand-700/20
+           hover:from-brand-700 hover:to-brand-800 hover:shadow-lg hover:shadow-brand-700/25
+           active:scale-[0.99];
   }
   .btn-secondary {
-    @apply btn bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 active:bg-slate-100;
+    @apply btn bg-white text-slate-700 border border-slate-200
+           hover:border-brand-300 hover:bg-brand-50/40 active:scale-[0.99];
   }
   .btn-quiet {
     @apply btn bg-transparent text-slate-600 hover:bg-slate-100;
   }
   .btn-sm {
     @apply text-sm;
-    min-height: 36px;
-    padding: 0 0.75rem;
+    min-height: 38px;
+    padding: 0 0.875rem;
   }
 
   .label {
-    @apply block text-[13px] font-medium text-slate-700 mb-1.5;
+    @apply block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1.5;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold;
   }
 }
 
+/* ------------------------------------------------------------------ motion */
+
+/* Each screen fades and lifts slightly on entry. Short enough that it reads as
+   responsiveness rather than an animation you wait for. */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-page {
+  animation: page-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Popovers grow from the control that opened them, which is what makes them
+   read as attached rather than as a panel that appeared from nowhere. */
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-popover {
+  animation: popover-in 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Anything clickable should acknowledge the press. */
+@layer components {
+  .card {
+    @apply transition-all duration-200;
+  }
+  a.card:active,
+  button.card:active {
+    @apply scale-[0.995];
+  }
+}
+
+/* Someone who has asked their system to reduce motion gets none of it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* -------------------------------------------------------------------- map */
+
 .leaflet-container {
   @apply bg-slate-100;
+  /* Leaflet's own font is Helvetica; match the rest of the product. */
+  font-family: inherit;
 }
 .leaflet-control-attribution {
   font-size: 10px !important;
+}
+
+/* Rounder, lighter zoom controls that match the app's buttons. */
+.leaflet-control-zoom {
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.12) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+}
+.leaflet-control-zoom a {
+  @apply text-slate-700;
+  border: none !important;
+  width: 32px !important;
+  height: 32px !important;
+  line-height: 32px !important;
+  transition: background-color 150ms ease;
+}
+.leaflet-control-zoom a:hover {
+  @apply bg-brand-50 text-brand-700;
+}
+
+/* ---------------------------------------------------------------- texture */
+
+/* A faint engineering grid. Sits under the sign-in brand panel at very low
+   opacity so a large field of colour has something to catch the eye, without
+   becoming a pattern anyone consciously notices. */
+.bg-grid-soft {
+  background-image:
+    linear-gradient(to right, currentColor 1px, transparent 1px),
+    linear-gradient(to bottom, currentColor 1px, transparent 1px);
+  background-size: 34px 34px;
+  color: #ffffff;
+}
+
+/* The app background, one step up from flat. Two very wide, very pale washes
+   of brand colour placed off-centre, so scrolling a long screen does not feel
+   like scrolling a sheet of grey. */
+.bg-app-wash {
+  background-color: theme("colors.surface.sunken");
+  background-image:
+    radial-gradient(60rem 40rem at 12% -8%, rgba(16, 185, 129, 0.07), transparent 60%),
+    radial-gradient(48rem 36rem at 105% 8%, rgba(45, 212, 191, 0.06), transparent 62%);
+  background-attachment: fixed;
 }
