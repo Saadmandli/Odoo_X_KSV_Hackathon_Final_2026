@@ -152,8 +152,40 @@ export default function Reports() {
 
       {data.monthlySummary.length > 0 && (
         <Panel title="Monthly summary" sub="Revenue against running costs">
-          <div className="-mx-4 overflow-x-auto px-4">
-            <table className="w-full min-w-[420px] text-sm">
+          {/* Phones get stacked rows. A five-column table on a 375px screen
+              either overflows the card or scrolls sideways, and both read as
+              broken. */}
+          <div className="divide-y divide-slate-100 sm:hidden">
+            {data.monthlySummary.map((m) => (
+              <div key={m.month} className="py-3 first:pt-0 last:pb-0">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[15px] font-medium text-slate-900">{m.month}</span>
+                  <span
+                    className={`text-[15px] font-semibold ${
+                      m.netProfit >= 0 ? "text-brand-700" : "text-rose-600"
+                    }`}
+                  >
+                    {money(m.netProfit)}
+                  </span>
+                </div>
+                <dl className="mt-1.5 grid grid-cols-3 gap-2 text-xs">
+                  {[
+                    ["Revenue", m.revenue],
+                    ["Fuel", m.fuelCost],
+                    ["Upkeep", m.maintenance],
+                  ].map(([label, value]) => (
+                    <div key={label}>
+                      <dt className="text-slate-500">{label}</dt>
+                      <dd className="text-slate-700">{money(value)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden sm:block">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
                   <th className="pb-2 font-medium">Month</th>
