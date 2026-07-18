@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -579,6 +579,28 @@ export default function Dashboard() {
               </span>
               <Switch checked={womenOnly} onCheckedChange={setWomenOnly} />
             </label>
+          </div>
+        )}
+
+        {/* Someone who never answered the gender question cannot see or book a
+            women-only ride, and previously had no way to discover that: the
+            rides simply were not in her results and the toggle above never
+            appeared, so the feature looked broken rather than gated. Shown only
+            for UNDISCLOSED — a man has answered, and telling him what he is
+            missing would be noise. */}
+        {user?.gender === "UNDISCLOSED" && (
+          <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-3">
+            <p className="text-[13.5px] font-medium text-violet-900">
+              Looking for women-only rides?
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-violet-700/90">
+              They stay hidden until you set your gender, so they are only ever offered to the
+              people who can travel on them.{" "}
+              <Link to="/settings" className="font-semibold underline">
+                Set it in Settings
+              </Link>
+              .
+            </p>
           </div>
         )}
 
