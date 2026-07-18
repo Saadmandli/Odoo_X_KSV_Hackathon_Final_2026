@@ -393,6 +393,9 @@ export default function Dashboard() {
             <label className="label">Departure</label>
             <Input
               type="datetime-local"
+              // Convenience only. The picker can be bypassed, so the server
+              // enforces the same rule on publish and on booking.
+              min={toLocalInput(new Date())}
               value={departureAt}
               onChange={(e) => setDepartureAt(e.target.value)}
             />

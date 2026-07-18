@@ -11,6 +11,11 @@ router.use(requireAuth);
 
 const point = z.object({ label: z.string().min(1), lat: z.number(), lng: z.number() });
 
+// Two minutes of slack. A driver publishing "leaving now" spends a few seconds
+// on the form, and their device clock may differ slightly from the server's;
+// neither should be treated as a past departure.
+const DEPARTURE_GRACE_MS = 2 * 60 * 1000;
+
 // Route Confirmation screen calls this before publishing or searching.
 // When a vehicle is supplied it also returns a suggested fare, computed from
 // the organisation's own fuel price and the vehicle's mileage — the admin's
@@ -76,6 +81,17 @@ router.post(
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
     const d = parsed.data;
 
+    // Reject past departures. The validity check comes first: an unparseable
+    // date yields NaN, and every comparison with NaN is false, so a range
+    // check alone would let bad input reach the database.
+    const departure = new Date(d.departureAt);
+    if (Number.isNaN(departure.getTime())) {
+      return res.status(400).json({ error: "Enter a valid departure date and time" });
+    }
+    if (departure.getTime() < Date.now() - DEPARTURE_GRACE_MS) {
+      return res.status(400).json({ error: "Departure time must be in the future" });
+    }
+
     // Vehicle must belong to the caller — never trust a client-supplied id.
     const vehicle = await prisma.vehicle.findFirst({
       where: { id: d.vehicleId, userId: req.user.id, isActive: true },
@@ -138,8 +154,11 @@ router.get(
       return res.status(400).json({ error: "origin and destination coordinates are required" });
     }
 
+    // The window is centred on the requested time, but its lower bound is
+    // clamped to now — otherwise searching at 6pm would surface rides that
+    // left at noon. A search entirely in the past simply returns nothing.
     const windowHours = Number(req.query.windowHours || 6);
-    const from = new Date(when.getTime() - windowHours * 3600_000);
+    const from = new Date(Math.max(when.getTime() - windowHours * 3600_000, Date.now()));
     const to = new Date(when.getTime() + windowHours * 3600_000);
 
     const rides = await prisma.ride.findMany({

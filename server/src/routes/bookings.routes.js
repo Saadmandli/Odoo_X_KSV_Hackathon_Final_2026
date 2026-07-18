@@ -31,6 +31,11 @@ router.post(
         if (!ride) throw new HttpError(404, "Ride not found");
         if (ride.driverId === req.user.id) throw new HttpError(400, "You cannot book your own ride");
         if (ride.status !== "PUBLISHED") throw new HttpError(409, "This ride is no longer open for booking");
+        // Checked inside the transaction, alongside the seat claim: a ride can
+        // depart between reading it and decrementing seats.
+        if (ride.departureAt.getTime() < Date.now()) {
+          throw new HttpError(409, "This ride has already departed");
+        }
 
         const claimed = await tx.ride.updateMany({
           where: { id: rideId, seatsLeft: { gte: seats } },
