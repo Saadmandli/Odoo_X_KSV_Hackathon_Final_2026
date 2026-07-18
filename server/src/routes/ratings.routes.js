@@ -1,15 +1,27 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
+import * as V from "../lib/validation.js";
 import { requireAuth, ah } from "../middleware/auth.js";
 
 const router = Router();
 router.use(requireAuth);
 
 const rateSchema = z.object({
-  rideId: z.string(),
-  stars: z.number().int().min(1).max(5),
-  comment: z.string().max(300).optional(),
+  rideId: z.string().min(1, "A ride is required"),
+  stars: z
+    .number()
+    .int("A rating must be a whole number of stars")
+    .min(1, "A rating is between 1 and 5 stars")
+    .max(5, "A rating is between 1 and 5 stars"),
+  // Trimmed, so a comment of nothing but spaces is stored as no comment
+  // rather than as a review that renders blank.
+  comment: z
+    .string()
+    .trim()
+    .max(300, "Keep the comment under 300 characters")
+    .optional()
+    .transform((v) => (v ? v : undefined)),
 });
 
 router.post(

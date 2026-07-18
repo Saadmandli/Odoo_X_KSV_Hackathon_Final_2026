@@ -32,7 +32,18 @@ export async function api(path, { method = "GET", body, signal } = {}) {
     });
   } catch (err) {
     if (err.name === "TypeError" || err.message === "Failed to fetch") {
-      throw new ApiError(503, "Cannot connect to server. Please ensure the backend server is running on http://localhost:4000.");
+      // Two very different situations produce the same failed fetch, so the
+      // message has to match where the app is actually running. In development
+      // the API is almost always simply not started. In production the usual
+      // cause is the free host cold-starting, which resolves on its own — so
+      // naming localhost there would send someone chasing a machine that is
+      // not the problem.
+      throw new ApiError(
+        503,
+        import.meta.env.DEV
+          ? "Cannot reach the API. Check that the server is running on http://localhost:4000."
+          : "Cannot reach the server. It may be waking up after being idle — try again in a moment."
+      );
     }
     throw err;
   }

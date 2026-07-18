@@ -37,8 +37,17 @@ router.get(
 );
 
 const rechargeSchema = z.object({
-  amount: z.number().positive().max(50000),
-  method: z.enum(["CARD", "UPI"]),
+  amount: z
+    .number()
+    .positive("Enter an amount greater than zero")
+    .max(50000, "You can top up at most ₹50,000 at a time")
+    .refine(
+      (v) => Number.isInteger(Math.round(v * 100)),
+      "An amount cannot have more than two decimal places"
+    ),
+  method: z.enum(["CARD", "UPI"], {
+    errorMap: () => ({ message: "Choose card or UPI to top up" }),
+  }),
 });
 
 // Step 1 of a recharge: ask Razorpay for an order the browser can pay against.
@@ -46,7 +55,7 @@ router.post(
   "/wallet/recharge/order",
   ah(async (req, res) => {
     const parsed = rechargeSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: "Enter a valid amount" });
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
     try {
       const order = await createOrder({
@@ -75,7 +84,7 @@ router.post(
         razorpaySignature: z.string().optional(),
       })
       .safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: "Enter a valid amount" });
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
     const { amount, method, razorpayOrderId, razorpayPaymentId, razorpaySignature } = parsed.data;
 

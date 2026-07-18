@@ -13,6 +13,10 @@ export default function LocationInput({ value, onChange, placeholder, savedPlace
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Whether a search has come back for the current text, so "nothing found"
+  // can be distinguished from "nothing searched for yet".
+  const [searched, setSearched] = useState(false);
+  const [notice, setNotice] = useState("");
   const abortRef = useRef(null);
   const boxRef = useRef(null);
 
@@ -31,6 +35,8 @@ export default function LocationInput({ value, onChange, placeholder, savedPlace
   useEffect(() => {
     if (query.length < 3 || query === value?.label) {
       setResults([]);
+      setSearched(false);
+      setNotice("");
       setLoading(false);
       return;
     }
@@ -42,16 +48,31 @@ export default function LocationInput({ value, onChange, placeholder, savedPlace
       abortRef.current = ctrl;
 
       try {
-        const { results } = await get(`/places/geocode?q=${encodeURIComponent(query)}`, {
+        const data = await get(`/places/geocode?q=${encodeURIComponent(query)}`, {
           signal: ctrl.signal,
         });
-        setResults(results);
-      } catch {
+        setResults(data.results ?? []);
+        setSearched(true);
+        setNotice(
+          data.degraded
+            ? "Place search is unavailable right now — pick a saved place, or try again shortly."
+            : // Say so when the search had to be loosened, rather than quietly
+              // showing results for something the person did not type.
+              data.matchedQuery && data.matchedQuery.toLowerCase() !== query.trim().toLowerCase()
+              ? `Showing results for "${data.matchedQuery}"`
+              : ""
+        );
+      } catch (err) {
+        // An abort is this component replacing its own request — not a
+        // failure, and it must not blank a list the newer request just filled.
+        if (err.name === "AbortError") return;
         setResults([]);
+        setSearched(true);
+        setNotice("Could not reach place search. Check your connection.");
       } finally {
         setLoading(false);
       }
-    }, 500); // Matches the geocoder's rate limit.
+    }, 450);
 
     return () => clearTimeout(timer);
   }, [query, value?.label]);
@@ -91,8 +112,22 @@ export default function LocationInput({ value, onChange, placeholder, savedPlace
         )}
       </div>
 
-      {open && (matchingSaved.length > 0 || results.length > 0) && (
+      {/* The panel also opens for "searching" and "nothing found". Rendering
+          nothing at all was the old behaviour, and it left someone who typed a
+          place that did not match staring at an empty box with no idea whether
+          the app was working, still loading, or broken. */}
+      {open &&
+        (matchingSaved.length > 0 ||
+          results.length > 0 ||
+          notice ||
+          (query.length >= 3 && (loading || searched))) && (
         <div className="absolute z-[1000] mt-1 w-full overflow-hidden rounded-xl2 border border-slate-200 bg-white shadow-lift">
+          {notice && (
+            <p className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              {notice}
+            </p>
+          )}
+
           {matchingSaved.length > 0 && (
             <div className="border-b border-slate-100">
               {matchingSaved.map((p) => (
@@ -124,6 +159,22 @@ export default function LocationInput({ value, onChange, placeholder, savedPlace
               </span>
             </button>
           ))}
+
+          {loading && results.length === 0 && (
+            <p className="flex items-center gap-2 px-3 py-3 text-sm text-slate-500">
+              <Loader2 size={14} className="animate-spin" />
+              Searching for “{query}”…
+            </p>
+          )}
+
+          {!loading && searched && results.length === 0 && matchingSaved.length === 0 && (
+            <div className="px-3 py-3">
+              <p className="text-sm font-medium text-slate-700">No places found for “{query}”</p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Try a shorter name — an area or landmark works better than a full address.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

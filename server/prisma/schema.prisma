@@ -36,8 +36,10 @@ model Organization {
 
   createdAt DateTime @default(now())
 
-  users User[]
-  rides Ride[]
+  users       User[]
+  rides       Ride[]
+  orgMessages OrgMessage[]
+  sosAlerts   SosAlert[]
 
   @@map("organizations")
 }
@@ -45,6 +47,18 @@ model Organization {
 enum Role {
   ADMIN
   EMPLOYEE
+}
+
+// Drives women-only matching, and nothing else.
+//
+// Optional by design: UNDISCLOSED is the default and stays valid everywhere.
+// Someone who declines to answer keeps full use of the product — they simply
+// cannot publish or join a women-only ride, because those two things are the
+// only decisions this field is allowed to influence.
+enum Gender {
+  FEMALE
+  MALE
+  UNDISCLOSED
 }
 
 model User {
@@ -59,6 +73,12 @@ model User {
   officeLocation String?
   manager      String?
   role         Role    @default(EMPLOYEE)
+  gender       Gender  @default(UNDISCLOSED)
+
+  // Shown to an administrator only when this person raises an SOS. Kept on the
+  // user rather than per-trip so it is already there in the moment it matters.
+  emergencyContactName  String?
+  emergencyContactPhone String?
 
   // Admin > Employees > "Platform Access" column: approve / revoke.
   isApproved Boolean @default(true)
@@ -78,6 +98,8 @@ model User {
   notifications Notification[]
   ratingsGiven    Rating[] @relation("ratingsGiven")
   ratingsReceived Rating[] @relation("ratingsReceived")
+  orgMessages     OrgMessage[]
+  sosAlerts       SosAlert[]
 
   @@index([orgId])
   @@map("users")
@@ -160,6 +182,11 @@ model Ride {
   isRecurring    Boolean @default(false)
   recurrenceDays Int[]   @default([]) // 0=Sun .. 6=Sat
 
+  // Women-only ride. Only a driver whose gender is FEMALE can set this, and
+  // only a FEMALE passenger can book one — both enforced server-side, since a
+  // safety rule that lives in the UI is not a safety rule.
+  womenOnly Boolean @default(false)
+
   // Safety: a rider can share a read-only live link with family. Random and
   // per-ride so it reveals nothing about the org and dies with the trip.
   shareToken String? @unique
@@ -173,8 +200,9 @@ model Ride {
   vehicle  Vehicle        @relation(fields: [vehicleId], references: [id])
   bookings Booking[]
   pings    LocationPing[]
-  messages Message[]
-  ratings  Rating[]
+  messages  Message[]
+  ratings   Rating[]
+  sosAlerts SosAlert[]
 
   @@index([orgId, status, departureAt])
   @@index([driverId])
@@ -236,6 +264,13 @@ model Booking {
 }
 
 // Live tracking (PS 5.5). Written only while a ride is STARTED/IN_PROGRESS.
+/// A GPS fix from the driver's device while a trip is running.
+///
+/// `accuracyM` is the radius the device believes the fix is good to. It is
+/// stored because a 2000-metre fix from a phone that has fallen back to
+/// cell-tower positioning looks identical to a 5-metre one on a map, and a
+/// passenger watching a marker jump across the city deserves to be told the
+/// signal is poor rather than left to conclude the app is broken.
 model LocationPing {
   id         String   @id @default(cuid())
   rideId     String
@@ -243,6 +278,7 @@ model LocationPing {
   lng        Float
   speedKmph  Float?
   heading    Float?
+  accuracyM  Float?
   recordedAt DateTime @default(now())
 
   ride Ride @relation(fields: [rideId], references: [id], onDelete: Cascade)
@@ -328,6 +364,28 @@ model WalletTransaction {
   @@map("wallet_transactions")
 }
 
+/**
+ * The organisation-wide channel.
+ *
+ * Separate from Message, which belongs to one trip: this is the noticeboard
+ * where someone asks "anyone driving to GIFT City tomorrow?" before a ride
+ * exists to attach the question to.
+ */
+model OrgMessage {
+  id       String @id @default(cuid())
+  orgId    String
+  senderId String
+  body     String
+
+  createdAt DateTime @default(now())
+
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  sender User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+  @@map("org_messages")
+}
+
 model Notification {
   id        String   @id @default(cuid())
   userId    String
@@ -340,4 +398,44 @@ model Notification {
 
   @@index([userId, isRead])
   @@map("notifications")
+}
+
+// ------------------------------------------------------------------- safety
+
+enum SosStatus {
+  ACTIVE
+  RESOLVED
+}
+
+/// An SOS raised from a trip.
+///
+/// Stored as an incident rather than only fired as a notification: an alert
+/// that exists solely as a push is gone the moment it is dismissed, and the
+/// administrator handling it needs the position it was raised from, who raised
+/// it, and whether anyone has since closed it out. Position is copied onto the
+/// row rather than read back from location_pings because pings stop when the
+/// trip ends, and an incident has to stay readable afterwards.
+model SosAlert {
+  id     String @id @default(cuid())
+  orgId  String
+  userId String
+  rideId String?
+
+  lat Float?
+  lng Float?
+  // Free text from the person raising it. Optional: the button has to work in
+  // one press, so an explanation can never be required.
+  note String?
+
+  status     SosStatus @default(ACTIVE)
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+  resolvedBy String?
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ride Ride?        @relation(fields: [rideId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, status, createdAt])
+  @@map("sos_alerts")
 }

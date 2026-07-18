@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CarFront, Fuel, Plus, Trash2, Users } from "lucide-react";
 import { del, get, post } from "../lib/api";
+import { filterRegistration } from "../lib/inputs";
 import { Banner, EmptyState, Sheet, Spinner, StatusChip } from "../components/ui";
 
 const BLANK = {
@@ -172,7 +173,9 @@ export default function Vehicles() {
               className="field font-mono uppercase"
               required
               value={form.registrationNumber}
-              onChange={set("registrationNumber")}
+              onChange={(e) =>
+                setForm({ ...form, registrationNumber: filterRegistration(e.target.value) })
+              }
               placeholder="GJ18AB4471"
             />
           </div>
@@ -208,6 +211,7 @@ export default function Vehicles() {
                 inputMode="decimal"
                 step="0.1"
                 min="1"
+                max="60"
                 className="field"
                 value={form.mileageKmpl}
                 onChange={set("mileageKmpl")}

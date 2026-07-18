@@ -14,6 +14,7 @@ import WalletPage from "./pages/WalletPage";
 import Vehicles from "./pages/Vehicles";
 import History from "./pages/History";
 import Reports from "./pages/Reports";
+import Chat from "./pages/Chat";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import PublicTrack from "./pages/PublicTrack";
@@ -61,6 +62,7 @@ export default function App() {
             <Route path="/wallet" element={<WalletPage />} />
             <Route path="/vehicles" element={<Vehicles />} />
             <Route path="/history" element={<History />} />
+            <Route path="/chat" element={<Chat />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
             <Route

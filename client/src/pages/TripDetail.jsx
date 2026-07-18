@@ -17,8 +17,10 @@ import {
 import { get, post } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import MapView from "../components/MapView";
+import { decodePolyline } from "../lib/polyline";
 import PickupPlan from "../components/PickupPlan";
 import RateDriver from "../components/RateDriver";
+import { SosButton } from "../components/SosButton";
 import {
   Avatar,
   Banner,
@@ -27,6 +29,7 @@ import {
   Sheet,
   Spinner,
   StatusChip,
+  WomenOnlyBadge,
   money,
   when,
 } from "../components/ui";
@@ -35,6 +38,30 @@ import {
 // no dropped connection mid-demo, and it behaves the same on every host.
 const TRACK_INTERVAL_MS = 3000;
 const CHAT_INTERVAL_MS = 4000;
+// How quickly the other side sees Start / In progress / Complete.
+const STATUS_INTERVAL_MS = 4000;
+
+// A phone reports a fix every second or so. Sending all of them would fill the
+// trail with identical points and drain a battery for nothing, so a ping goes
+// out once the vehicle has moved 25 metres — or every 10 seconds regardless,
+// so a stationary car still proves it is still there.
+const MIN_PING_DISTANCE_M = 25;
+const MAX_PING_GAP_MS = 10000;
+
+const GPS_ERRORS = {
+  1: "Location permission was denied. Allow it to share your position with your passengers.",
+  2: "Your position is unavailable right now — check that location services are on.",
+  3: "Getting a GPS fix is taking longer than usual. Still trying.",
+};
+
+/** Metres between two coordinates. Equirectangular: exact enough under a km. */
+function metresBetween(aLat, aLng, bLat, bLng) {
+  const R = 6371000;
+  const rad = Math.PI / 180;
+  const x = (bLng - aLng) * rad * Math.cos(((aLat + bLat) / 2) * rad);
+  const y = (bLat - aLat) * rad;
+  return Math.sqrt(x * x + y * y) * R;
+}
 
 const place = (label) => String(label ?? "").split(",")[0];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -125,6 +152,8 @@ export default function TripDetail() {
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [repeatNote, setRepeatNote] = useState("");
+  const [simulating, setSimulating] = useState(false);
+  const [gpsError, setGpsError] = useState("");
 
   const chatEndRef = useRef(null);
 
@@ -139,6 +168,17 @@ export default function TripDetail() {
   useEffect(() => {
     loadRide();
   }, [loadRide]);
+
+  // The driver advances the trip; everyone else finds out by asking. Without
+  // this a passenger sits on "Open" until they refresh, even though the car
+  // has already left. Stops once the trip reaches a state that cannot change.
+  useEffect(() => {
+    if (!ride) return;
+    if (["COMPLETED", "CANCELLED"].includes(ride.status)) return;
+
+    const id = setInterval(loadRide, STATUS_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [ride?.status, loadRide]);
 
   const isDriver = ride && user && ride.driverId === user.id;
   const isLive = ride && ["STARTED", "IN_PROGRESS"].includes(ride.status);
@@ -161,25 +201,91 @@ export default function TripDetail() {
     };
   }, [rideId, isLive]);
 
-  // The driver's device is the source of truth for position.
+  /**
+   * Walks the vehicle along its own route, one step every couple of seconds.
+   *
+   * A device sitting on a desk reports the same coordinates forever, so on a
+   * laptop there is nothing for tracking to show. This drives the same ping
+   * endpoint the real GPS uses — it is a stand-in for movement, not a stand-in
+   * for the feature, and it is labelled as such in the interface.
+   */
   useEffect(() => {
-    if (!isDriver || !isLive || !navigator.geolocation) return;
+    if (!simulating || !isDriver || !isLive || !ride) return;
+
+    const path = decodePolyline(ride.routeGeometry);
+    // No road geometry (routing was unavailable): interpolate the straight line.
+    const points =
+      path.length > 1
+        ? path
+        : Array.from({ length: 40 }, (_, i) => {
+            const t = i / 39;
+            return [
+              ride.originLat + (ride.destLat - ride.originLat) * t,
+              ride.originLng + (ride.destLng - ride.originLng) * t,
+            ];
+          });
+
+    let i = Math.floor(points.length * 0.05);
+    const id = setInterval(() => {
+      if (i >= points.length) return clearInterval(id);
+      const [lat, lng] = points[i];
+      post(`/rides/${rideId}/ping`, { lat, lng, speedKmph: 32 }).catch(() => {});
+      i += Math.max(1, Math.round(points.length / 60));
+    }, 2000);
+
+    return () => clearInterval(id);
+  }, [simulating, isDriver, isLive, ride, rideId]);
+
+  /**
+   * The driver's device is the source of truth for position.
+   *
+   * `maximumAge: 0` forces a fresh fix rather than letting the browser hand
+   * back a cached one — a cached position is what makes a marker sit still for
+   * a minute and then jump a kilometre.
+   *
+   * Fixes arrive far faster than they are worth sending, so a ping goes out
+   * only when the vehicle has actually moved or enough time has passed. That
+   * keeps the trail meaningful instead of a pile of identical points, and stops
+   * a phone with a jittery fix hammering the endpoint while parked.
+   */
+  useEffect(() => {
+    if (!isDriver || !isLive || !navigator.geolocation || simulating) return;
+
+    let lastSent = { lat: null, lng: null, at: 0 };
 
     const watchId = navigator.geolocation.watchPosition(
-      ({ coords }) => {
+      ({ coords, timestamp }) => {
+        // A fix good to worse than 200 m is cell-tower positioning, not GPS.
+        // Plotting it would move the marker somewhere the car has never been.
+        if (coords.accuracy != null && coords.accuracy > 200) return;
+
+        const movedM =
+          lastSent.lat == null
+            ? Infinity
+            : metresBetween(lastSent.lat, lastSent.lng, coords.latitude, coords.longitude);
+        const sinceMs = timestamp - lastSent.at;
+
+        if (movedM < MIN_PING_DISTANCE_M && sinceMs < MAX_PING_GAP_MS) return;
+        lastSent = { lat: coords.latitude, lng: coords.longitude, at: timestamp };
+
         post(`/rides/${rideId}/ping`, {
           lat: coords.latitude,
           lng: coords.longitude,
-          speedKmph: coords.speed != null ? coords.speed * 3.6 : undefined,
-          heading: coords.heading ?? undefined,
+          // The Geolocation API reports metres per second; the rest of the
+          // product speaks km/h. A negative value means "unknown".
+          speedKmph: coords.speed != null && coords.speed >= 0 ? coords.speed * 3.6 : undefined,
+          heading: coords.heading != null && !Number.isNaN(coords.heading) ? coords.heading : undefined,
+          accuracyM: coords.accuracy ?? undefined,
         }).catch(() => {});
       },
-      () => {},
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+      (err) => setGpsError(GPS_ERRORS[err.code] ?? "Location is unavailable on this device."),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
-  }, [rideId, isDriver, isLive]);
+    // `simulating` belongs here: without it, turning the simulator on left the
+    // real watch running, and two sources fought over the same ping endpoint.
+  }, [rideId, isDriver, isLive, simulating]);
 
   useEffect(() => {
     if (!showChat) return;
@@ -303,6 +409,7 @@ export default function TripDetail() {
       <div className="flex items-center gap-2">
         <RoleBadge role={isDriver ? "driving" : "riding"} />
         <StatusChip status={ride.status} />
+        {ride.womenOnly && <WomenOnlyBadge size="sm" />}
       </div>
 
       <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">
@@ -313,6 +420,15 @@ export default function TripDetail() {
       <div className="mt-3">
         <NextStep tone={guidance.tone}>{guidance.text}</NextStep>
       </div>
+
+      {/* Only the driver can act on this, and only while it matters. A
+          passenger seeing "location permission denied" would have no idea
+          whose permission was being talked about. */}
+      {isDriver && isLive && gpsError && !simulating && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800">
+          {gpsError}
+        </div>
+      )}
 
       <MapView
         origin={{ lat: ride.originLat, lng: ride.originLng }}
@@ -328,14 +444,61 @@ export default function TripDetail() {
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-500 opacity-75" />
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand-600" />
           </span>
-          <div className="flex-1 text-sm">
+          <div className="min-w-0 flex-1 text-sm">
             <span className="font-medium text-brand-800">
               {track?.etaMinutes ? `Arriving in about ${track.etaMinutes} min` : "Trip in progress"}
             </span>
-            {!track?.position && (
+
+            {!track?.position ? (
               <span className="block text-xs text-brand-700">Waiting for the driver's location</span>
+            ) : (
+              <span className="block text-xs text-brand-700">
+                {track.remainingKm != null && `${track.remainingKm} km to go · `}
+                {track.position.speedKmph > 1 && `${Math.round(track.position.speedKmph)} km/h · `}
+                {/* Read from the server's clock, so a device with the wrong
+                    time cannot report a fix as minutes old or in the future. */}
+                {track.fixAgeSeconds != null
+                  ? track.fixAgeSeconds < 60
+                    ? `updated ${track.fixAgeSeconds}s ago`
+                    : `updated ${Math.round(track.fixAgeSeconds / 60)} min ago`
+                  : ""}
+              </span>
+            )}
+
+            {/* A weak fix is called out rather than left to look like the app
+                losing the car. */}
+            {track?.position?.accuracyM > 60 && (
+              <span className="block text-xs text-amber-700">
+                Weak GPS signal — position accurate to about{" "}
+                {Math.round(track.position.accuracyM)} m
+              </span>
+            )}
+
+            {track?.progressPercent != null && (
+              <span className="mt-1.5 block h-1 w-full overflow-hidden rounded-full bg-brand-200">
+                <span
+                  className="block h-full rounded-full bg-brand-600 transition-[width] duration-700 ease-out"
+                  style={{ width: `${track.progressPercent}%` }}
+                />
+              </span>
             )}
           </div>
+
+          {/* Only the driver sends position, so only the driver can stand in
+              for a moving vehicle. Labelled plainly so nobody mistakes the
+              simulation for the real feed. */}
+          {isDriver && (
+            <button
+              onClick={() => setSimulating((v) => !v)}
+              className={`shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+                simulating
+                  ? "bg-brand-600 text-white"
+                  : "bg-white text-brand-800 shadow-card hover:bg-brand-50"
+              }`}
+            >
+              {simulating ? "Simulating…" : "Simulate driving"}
+            </button>
+          )}
           <button
             onClick={share}
             className="inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-xs font-medium text-brand-800 shadow-card"
@@ -470,8 +633,12 @@ export default function TripDetail() {
         <Banner>{error}</Banner>
       </div>
 
-      {/* Primary action */}
-      <div className="sticky bottom-20 mt-4 md:bottom-4">
+      {/* Primary action.
+          Deliberately in normal flow: a sticky bar floats over whatever is
+          behind it, which on this screen meant covering the rider list and
+          fare. The page is short enough that the button is reachable without
+          pinning it. */}
+      <div className="mt-5 space-y-2">
         {isDriver && nextAction && (
           <button className="btn-primary w-full shadow-lift" onClick={advance} disabled={busy}>
             {ride.status === "IN_PROGRESS" ? <Flag size={17} /> : <Play size={17} />}
@@ -495,13 +662,19 @@ export default function TripDetail() {
           </button>
         )}
 
+        {/* Available to everyone in the car, driver included — whoever is in
+            trouble is not decided by who is holding the wheel. Only while the
+            trip is actually running, since that is the window the alert can
+            say anything useful about where someone is. */}
+        {isLive && <SosButton rideId={rideId} />}
+
         {/* Cancelling is only possible before the trip starts — once wheels are
             moving the seat has already been used. */}
         {ride.status === "PUBLISHED" && (isDriver || myBooking) && (
           <button
             onClick={cancel}
             disabled={busy}
-            className="mt-2 w-full rounded-lg py-2.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+            className="w-full rounded-xl py-2.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
           >
             {isDriver ? "Cancel this ride" : "Cancel my seat"}
           </button>

@@ -107,10 +107,13 @@ const twice = await call("/payments/pay", {
 ok("cannot pay twice", twice.status === 409);
 
 // --- insufficient balance path
+// The fare has to beat the rider's wallet without being nonsense: fares are
+// capped at ₹5,000, and the 99999 this used to publish is precisely the kind
+// of value that cap exists to stop.
 const ride2 = (await call("/rides", {
   method: "POST", token: prayag,
   body: { vehicleId, origin: BOPAL, dest: GIFT,
-    departureAt: new Date(Date.now() + 7200_000).toISOString(), seats: 3, farePerSeat: 99999 },
+    departureAt: new Date(Date.now() + 7200_000).toISOString(), seats: 3, farePerSeat: 4800 },
 })).json.ride;
 const booking2 = (await call("/bookings", {
   method: "POST", token: saad,

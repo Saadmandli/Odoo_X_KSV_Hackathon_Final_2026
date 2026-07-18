@@ -2,6 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
+import * as V from "../lib/validation.js";
 import { requireAuth, requireAdmin, ah } from "../middleware/auth.js";
 
 const router = Router();
@@ -57,14 +58,14 @@ router.post(
   ah(async (req, res) => {
     const parsed = z
       .object({
-        name: z.string().min(2),
-        email: z.string().email(),
-        password: z.string().min(6),
-        phone: z.string().optional(),
-        department: z.string().optional(),
-        officeLocation: z.string().optional(),
-        manager: z.string().optional(),
-        employeeCode: z.string().optional(),
+        name: V.personName,
+        email: V.email,
+        password: z.string().min(6, "Password must be at least 6 characters").max(200),
+        phone: V.phone.optional(),
+        department: V.optionalText(40),
+        officeLocation: V.optionalText(60),
+        manager: V.optionalText(60),
+        employeeCode: V.optionalText(20),
       })
       .safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
@@ -156,13 +157,17 @@ router.put(
   ah(async (req, res) => {
     const parsed = z
       .object({
-        name: z.string().min(2).optional(),
-        registeredAddress: z.string().optional(),
-        industry: z.string().optional(),
-        adminContact: z.string().optional(),
-        fuelPricePerLitre: z.number().min(0).optional(),
-        costPerKm: z.number().min(0).optional(),
-        travelCostPerKm: z.number().min(0).optional(),
+        name: V.text(80, "Company name").optional(),
+        registeredAddress: V.optionalText(200),
+        industry: V.optionalText(60),
+        // This is the address employees are told to contact, so it has to be
+        // an address rather than whatever was typed.
+        adminContact: V.blankable(V.email),
+        // Upper bounds matter here: these three numbers drive every suggested
+        // fare in the product, so a stray zero silently reprices the org.
+        fuelPricePerLitre: V.money(1000, "Fuel price").optional(),
+        costPerKm: V.money(500, "Cost per km").optional(),
+        travelCostPerKm: V.money(500, "Travel cost per km").optional(),
       })
       .safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });

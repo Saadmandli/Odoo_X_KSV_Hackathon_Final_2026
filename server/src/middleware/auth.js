@@ -30,6 +30,12 @@ export async function requireAuth(req, res, next) {
         avatarColor: true,
         isActive: true,
         isApproved: true,
+        // Read on every request because the women-only rules are enforced per
+        // call, and because an SOS has to reach the person's emergency contact
+        // without a second lookup at the moment it is raised.
+        gender: true,
+        emergencyContactName: true,
+        emergencyContactPhone: true,
       },
     });
 

@@ -1,11 +1,45 @@
 import { useEffect, useState } from "react";
-import { Building2, CarFront, Leaf, Route, Users } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  Building2,
+  CarFront,
+  Leaf,
+  Route,
+  ShieldAlert,
+  ShieldCheck,
+  Star,
+  Users,
+} from "lucide-react";
 import { get, post, put } from "../lib/api";
-import { Avatar, Banner, Spinner, StatusChip, money } from "../components/ui";
+import { Avatar, Banner, Spinner, StatusChip, money, when } from "../components/ui";
+
+// Same validated accent and recessive chrome as the personal report, so the
+// two dashboards read as one product.
+const ACCENT = "#059669";
+const GRID = "#eef2f6";
+const AXIS_TEXT = "#94a3b8";
+const TOOLTIP = {
+  borderRadius: 10,
+  border: "1px solid #e2e8f0",
+  boxShadow: "0 8px 24px -8px rgba(16,24,40,.12)",
+  fontSize: 12,
+  padding: "8px 10px",
+};
 
 const TABS = [
   ["employees", "Employees"],
   ["vehicles", "Vehicles"],
+  ["safety", "Safety"],
   ["impact", "Impact"],
   ["settings", "Settings"],
 ];
@@ -51,6 +85,7 @@ export default function Admin() {
       <div className="mt-4">
         {tab === "employees" && <Employees />}
         {tab === "vehicles" && <Vehicles />}
+        {tab === "safety" && <Safety />}
         {tab === "impact" && <Impact />}
         {tab === "settings" && <Settings />}
       </div>
@@ -186,6 +221,254 @@ function Vehicles() {
   );
 }
 
+/**
+ * Live SOS alerts, then the safety numbers behind them.
+ *
+ * Alerts come first and unresolved ones are pinned to the top: this is the one
+ * screen in the product that might be open while something is actually going
+ * wrong, and an administrator should not have to scroll past a chart to find
+ * out who needs help.
+ */
+function Safety() {
+  const [data, setData] = useState(null);
+  const [report, setReport] = useState(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(null);
+
+  const load = () =>
+    Promise.all([get("/sos"), get("/reports/safety")])
+      .then(([alerts, safety]) => {
+        setData(alerts);
+        setReport(safety);
+      })
+      .catch((e) => setError(e.message));
+
+  // Polled, like the rest of the product's realtime. An alert raised while
+  // this tab is open should appear without anyone thinking to refresh.
+  useEffect(() => {
+    load();
+    const timer = setInterval(load, 15000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const resolve = async (id) => {
+    setBusy(id);
+    try {
+      await post(`/sos/${id}/resolve`, {});
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (error) return <Banner>{error}</Banner>;
+  if (!data || !report) return <Spinner label="Loading safety" />;
+
+  const { summary, sos, ratings } = report;
+
+  return (
+    <div className="space-y-5">
+      {data.activeCount > 0 && (
+        <div className="rounded-2xl border-2 border-rose-300 bg-rose-50 p-4">
+          <div className="flex items-center gap-2 text-rose-800">
+            <ShieldAlert size={18} />
+            <span className="font-bold">
+              {data.activeCount} active {data.activeCount === 1 ? "alert" : "alerts"}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-rose-700">
+            Someone has raised an emergency and nobody has marked it handled yet.
+          </p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Stat icon={ShieldCheck} label="Women-only trips" value={summary.womenOnlyRides} />
+        <Stat icon={Users} label="Women travelling" value={`${summary.womenParticipation}%`} />
+        <Stat icon={ShieldAlert} label="SOS raised" value={sos.total} />
+        <Stat
+          icon={Star}
+          label="Average rating"
+          value={ratings.average ? ratings.average.toFixed(2) : "—"}
+        />
+      </div>
+
+      <section className="card p-4">
+        <h2 className="text-[15px] font-semibold text-slate-900">Emergency alerts</h2>
+        <p className="mt-0.5 text-xs text-slate-500">
+          {sos.averageResponseMinutes != null
+            ? `Handled in ${sos.averageResponseMinutes} minutes on average.`
+            : "Nothing has been resolved yet."}
+        </p>
+
+        {data.alerts.length === 0 ? (
+          <p className="mt-4 rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">
+            No alerts have ever been raised.
+          </p>
+        ) : (
+          <ul className="mt-3 divide-y divide-slate-100">
+            {data.alerts.map((a) => (
+              <li key={a.id} className="py-3">
+                <div className="flex items-start gap-3">
+                  <Avatar name={a.user.name} color={a.user.avatarColor} size={36} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-slate-900">{a.user.name}</span>
+                      <span
+                        className={`chip ${
+                          a.status === "ACTIVE"
+                            ? "border border-rose-200 bg-rose-50 text-rose-700"
+                            : "border border-slate-200 bg-slate-50 text-slate-600"
+                        }`}
+                      >
+                        {a.status === "ACTIVE" ? "Active" : "Resolved"}
+                      </span>
+                      <span className="text-xs text-slate-400">{when(a.createdAt)}</span>
+                    </div>
+
+                    {a.note && <p className="mt-1 text-sm text-slate-700">“{a.note}”</p>}
+
+                    <div className="mt-1 space-y-0.5 text-xs text-slate-500">
+                      {a.ride && (
+                        <div>
+                          Trip: {a.ride.originLabel} to {a.ride.destLabel}
+                          {a.ride.vehicle && ` · ${a.ride.vehicle.registrationNumber}`}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap items-center gap-x-3">
+                        {a.user.phone && (
+                          <a href={`tel:${a.user.phone}`} className="font-medium text-brand-700">
+                            Call {a.user.phone}
+                          </a>
+                        )}
+                        {a.user.emergencyContactPhone && (
+                          <a
+                            href={`tel:${a.user.emergencyContactPhone}`}
+                            className="font-medium text-rose-700"
+                          >
+                            {a.user.emergencyContactName || "Emergency contact"}:{" "}
+                            {a.user.emergencyContactPhone}
+                          </a>
+                        )}
+                        {a.lat != null && a.lng != null ? (
+                          <a
+                            href={`https://www.openstreetmap.org/?mlat=${a.lat}&mlon=${a.lng}#map=17/${a.lat}/${a.lng}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-medium text-brand-700"
+                          >
+                            Open location
+                          </a>
+                        ) : (
+                          <span>No location was available</span>
+                        )}
+                      </div>
+                      {a.status === "RESOLVED" && a.resolvedBy && (
+                        <div>Handled by {a.resolvedBy}</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {a.status === "ACTIVE" && (
+                    <button
+                      onClick={() => resolve(a.id)}
+                      disabled={busy === a.id}
+                      className="btn-secondary btn-sm shrink-0"
+                    >
+                      {busy === a.id ? "Saving" : "Mark handled"}
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="card p-4">
+        <h2 className="text-[15px] font-semibold text-slate-900">Women-only travel</h2>
+        <p className="mt-0.5 text-xs text-slate-500">
+          {summary.womenOnlyRides} of the organisation's trips ran women-only, carrying{" "}
+          {summary.womenOnlySeats} {summary.womenOnlySeats === 1 ? "passenger" : "passengers"}.
+        </p>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <Figure
+            label="Share of all trips"
+            value={`${summary.womenOnlyShare}%`}
+            hint={`${summary.womenOnlyCompleted} completed`}
+          />
+          <Figure
+            label="Emergency contacts on file"
+            value={`${summary.emergencyContactsOnFile}/${summary.peopleTotal}`}
+            hint="People reachable in an emergency"
+          />
+        </div>
+
+        {report.byDepartment.length > 0 && (
+          <table className="mt-4 w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-400">
+                <th className="pb-2 font-semibold">Department</th>
+                <th className="pb-2 text-right font-semibold">People</th>
+                <th className="pb-2 text-right font-semibold">Women</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {report.byDepartment.map((d) => (
+                <tr key={d.department}>
+                  <td className="py-2.5 text-slate-700">{d.department}</td>
+                  <td className="py-2.5 text-right tabular-nums text-slate-600">{d.people}</td>
+                  <td className="py-2.5 text-right tabular-nums font-medium text-violet-700">
+                    {d.women}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="card p-4">
+        <h2 className="text-[15px] font-semibold text-slate-900">Driver ratings</h2>
+        <p className="mt-0.5 text-xs text-slate-500">
+          {ratings.count} ratings, averaging {ratings.average ?? "—"}.{" "}
+          {ratings.lowRatings > 0
+            ? `${ratings.lowRatings} at two stars or below.`
+            : "None at two stars or below."}
+        </p>
+
+        {ratings.trend.length > 1 && (
+          <ResponsiveContainer width="100%" height={180} className="mt-3">
+            <LineChart data={ratings.trend} margin={{ top: 8, right: 12, bottom: 0, left: -22 }}>
+              <CartesianGrid stroke="#eef2f5" vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
+              <YAxis domain={[0, 5]} tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
+              <Tooltip
+                contentStyle={{ fontSize: 12, borderRadius: 10, border: "1px solid #e2e8f0" }}
+                formatter={(v) => [`${v} stars`, "Average"]}
+              />
+              <Line type="monotone" dataKey="average" stroke="#059669" strokeWidth={2.5} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function Figure({ label, value, hint }) {
+  return (
+    <div className="rounded-xl border border-slate-200 p-3">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className="mt-0.5 text-xl font-semibold text-slate-900">{value}</div>
+      {hint && <div className="text-xs text-slate-400">{hint}</div>}
+    </div>
+  );
+}
+
 function Impact() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -220,16 +503,70 @@ function Impact() {
         <Stat label="Shared distance" value={`${Math.round(s.sharedPassengerKm)} km`} />
       </div>
 
-      <div className="card p-4">
-        <h2 className="mb-3 text-[15px] font-semibold text-slate-900">Most used routes</h2>
-        <div className="space-y-2">
-          {data.topRoutes.map((r) => (
-            <div key={r.route} className="flex items-center justify-between text-sm">
-              <span className="min-w-0 truncate text-slate-700">{r.route}</span>
-              <span className="shrink-0 text-slate-500">{r.trips} trips</span>
-            </div>
-          ))}
-        </div>
+      <div className="card p-5">
+        <h2 className="mb-1 text-[15px] font-semibold text-slate-900">Most used routes</h2>
+        <p className="mb-4 text-xs text-slate-500">Completed trips per corridor</p>
+
+        {/* One series, so one colour for every bar and no legend — the title
+            already says what is plotted. */}
+        <ResponsiveContainer width="100%" height={Math.max(110, data.topRoutes.length * 40 + 24)}>
+          <BarChart
+            data={data.topRoutes}
+            layout="vertical"
+            margin={{ top: 0, right: 40, left: 0, bottom: 0 }}
+          >
+            <CartesianGrid stroke={GRID} horizontal={false} />
+            <XAxis type="number" tickLine={false} axisLine={false} tick={{ fill: AXIS_TEXT, fontSize: 11 }} allowDecimals={false} />
+            <YAxis
+              type="category"
+              dataKey="route"
+              width={168}
+              tickLine={false}
+              axisLine={false}
+              tick={{ fill: "#475569", fontSize: 11 }}
+            />
+            <Tooltip cursor={{ fill: "rgba(5,150,105,0.05)" }} contentStyle={TOOLTIP} formatter={(v) => [`${v} trips`, "Trips"]} />
+            <Bar isAnimationActive={false}
+              dataKey="trips"
+              fill={ACCENT}
+              radius={[0, 4, 4, 0]}
+              barSize={16}
+              label={{ position: "right", fill: "#475569", fontSize: 11 }}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="card p-5">
+        <h2 className="mb-1 text-[15px] font-semibold text-slate-900">Participation by department</h2>
+        <p className="mb-4 text-xs text-slate-500">Trips taken or given, per team</p>
+
+        <ResponsiveContainer width="100%" height={Math.max(110, data.byDepartment.length * 40 + 24)}>
+          <BarChart
+            data={data.byDepartment}
+            layout="vertical"
+            margin={{ top: 0, right: 40, left: 0, bottom: 0 }}
+          >
+            <CartesianGrid stroke={GRID} horizontal={false} />
+            <XAxis type="number" tickLine={false} axisLine={false} tick={{ fill: AXIS_TEXT, fontSize: 11 }} allowDecimals={false} />
+            <YAxis
+              type="category"
+              dataKey="department"
+              width={110}
+              tickLine={false}
+              axisLine={false}
+              tick={{ fill: "#475569", fontSize: 11 }}
+            />
+            <Tooltip cursor={{ fill: "rgba(5,150,105,0.05)" }} contentStyle={TOOLTIP} formatter={(v) => [`${v} trips`, "Trips"]} />
+            <Bar isAnimationActive={false}
+              dataKey="trips"
+              fill={ACCENT}
+              radius={[0, 4, 4, 0]}
+              barSize={16}
+              label={{ position: "right", fill: "#475569", fontSize: 11 }}
+            />
+          </BarChart>
+        </ResponsiveContainer>
       </div>
 
       <div className="card p-4">
@@ -248,18 +585,29 @@ function Impact() {
         </div>
       </div>
 
-      <div className="card p-4">
-        <h2 className="mb-3 text-[15px] font-semibold text-slate-900">By department</h2>
-        <div className="space-y-2">
-          {data.byDepartment.map((d) => (
-            <div key={d.department} className="flex items-center justify-between text-sm">
-              <span className="text-slate-700">{d.department}</span>
-              <span className="text-slate-500">
-                {d.trips} trips · {Math.round(d.km)} km
-              </span>
-            </div>
-          ))}
-        </div>
+      {/* The table view for the charts above: every plotted value in text. */}
+      <div className="card p-5">
+        <h2 className="mb-3 text-[15px] font-semibold text-slate-900">Department detail</h2>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-400">
+              <th className="pb-2 font-semibold">Department</th>
+              <th className="pb-2 text-right font-semibold">Trips</th>
+              <th className="pb-2 text-right font-semibold">Distance</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {data.byDepartment.map((d) => (
+              <tr key={d.department}>
+                <td className="py-2.5 text-slate-700">{d.department}</td>
+                <td className="py-2.5 text-right tabular-nums text-slate-600">{d.trips}</td>
+                <td className="py-2.5 text-right tabular-nums text-slate-600">
+                  {Math.round(d.km)} km
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

@@ -81,9 +81,18 @@ router.get(
 
     const passengerKm = bookings.reduce((s, b) => s + Number(b.ride.distanceKm), 0);
 
-    // Sharing a ride means the passenger's trip burned no extra fuel — that
-    // saved fuel is the platform's whole sustainability pitch.
-    const co2SavedKg = round2(passengerKm * 0.121);
+    // Every shared seat is one car that did not make the journey — whether you
+    // were the passenger in it, or the driver who carried them. Counting only
+    // the rider side scored a driver who gave nine lifts at zero, which is both
+    // wrong and the opposite of the behaviour worth encouraging.
+    const carriedKm = rides.reduce(
+      (sum, ride) => sum + Number(ride.distanceKm) * ride.bookings.length,
+      0
+    );
+    const sharedKm = passengerKm + carriedKm;
+
+    // 0.121 kg CO2 per passenger-km, the standard petrol-car factor.
+    const co2SavedKg = round2(sharedKm * 0.121);
 
     res.json({
       summary: {
@@ -98,6 +107,8 @@ router.get(
         totalSpent: round2(spent),
         netProfit: round2(totalEarned - totalFuelCost),
         co2SavedKg,
+        sharedKm: round2(sharedKm),
+        seatsShared: rides.reduce((n, r) => n + r.bookings.length, 0),
       },
       vehicleCosts: [...byVehicle.values()]
         .map((v) => ({
@@ -206,6 +217,127 @@ router.get(
       byDepartment: [...byDepartment.values()]
         .map((d) => ({ department: d.id, trips: d.trips, km: round2(d.km) }))
         .sort((a, b) => b.trips - a.trips),
+    });
+  })
+);
+
+// ------------------------------------------------------------------ safety
+/**
+ * The safety picture for the organisation. Admin only.
+ *
+ * Reports on take-up of women-only travel, how quickly SOS alerts are being
+ * closed out, and whether driver ratings are holding up — the three things an
+ * administrator would be asked about if anyone questioned whether the scheme
+ * is safe to run.
+ */
+router.get(
+  "/safety",
+  ah(async (req, res) => {
+    if (req.user.role !== "ADMIN") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    const orgId = req.user.orgId;
+
+    const [rides, people, alerts, ratings] = await Promise.all([
+      prisma.ride.findMany({
+        where: { orgId, status: { not: "CANCELLED" } },
+        select: {
+          womenOnly: true,
+          status: true,
+          driverId: true,
+          bookings: {
+            where: { status: { not: "CANCELLED" } },
+            select: { passengerId: true },
+          },
+        },
+      }),
+      prisma.user.findMany({
+        where: { orgId, isActive: true },
+        select: { id: true, gender: true, department: true, emergencyContactPhone: true },
+      }),
+      prisma.sosAlert.findMany({
+        where: { orgId },
+        select: { status: true, createdAt: true, resolvedAt: true },
+      }),
+      prisma.rating.findMany({
+        where: { ride: { orgId } },
+        select: { stars: true, ride: { select: { completedAt: true, departureAt: true } } },
+      }),
+    ]);
+
+    const womenOnlyRides = rides.filter((r) => r.womenOnly);
+    const womenOnlySeats = womenOnlyRides.reduce((s, r) => s + r.bookings.length, 0);
+
+    // Anyone who has actually travelled — driven or ridden at least once.
+    const active = new Set();
+    for (const r of rides) {
+      active.add(r.driverId);
+      for (const b of r.bookings) active.add(b.passengerId);
+    }
+    const genderOf = new Map(people.map((p) => [p.id, p.gender]));
+    const activeWomen = [...active].filter((id) => genderOf.get(id) === "FEMALE").length;
+
+    const resolved = alerts.filter((a) => a.status === "RESOLVED" && a.resolvedAt);
+    const responseMinutes = resolved.map(
+      (a) => (a.resolvedAt.getTime() - a.createdAt.getTime()) / 60000
+    );
+
+    // Average stars per month, so a slide in driver behaviour is visible as a
+    // trend rather than hidden inside a single lifetime average.
+    const byMonth = new Map();
+    for (const r of ratings) {
+      const at = r.ride.completedAt ?? r.ride.departureAt;
+      const key = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}`;
+      const row = byMonth.get(key) ?? { month: key, total: 0, count: 0 };
+      row.total += r.stars;
+      row.count += 1;
+      byMonth.set(key, row);
+    }
+
+    // Women-only take-up per department, to show where the scheme is landing.
+    const deptRows = new Map();
+    for (const p of people) {
+      const key = p.department ?? "Unassigned";
+      const row = deptRows.get(key) ?? { department: key, people: 0, women: 0 };
+      row.people += 1;
+      if (p.gender === "FEMALE") row.women += 1;
+      deptRows.set(key, row);
+    }
+
+    res.json({
+      summary: {
+        womenOnlyRides: womenOnlyRides.length,
+        womenOnlyCompleted: womenOnlyRides.filter((r) => r.status === "COMPLETED").length,
+        womenOnlySeats,
+        // Share of all trips offered under the women-only setting.
+        womenOnlyShare: rides.length ? round2((womenOnlyRides.length / rides.length) * 100) : 0,
+        activeTravellers: active.size,
+        activeWomen,
+        womenParticipation: active.size ? round2((activeWomen / active.size) * 100) : 0,
+        emergencyContactsOnFile: people.filter((p) => p.emergencyContactPhone).length,
+        peopleTotal: people.length,
+      },
+      sos: {
+        total: alerts.length,
+        active: alerts.filter((a) => a.status === "ACTIVE").length,
+        resolved: resolved.length,
+        averageResponseMinutes: responseMinutes.length
+          ? round2(responseMinutes.reduce((a, b) => a + b, 0) / responseMinutes.length)
+          : null,
+      },
+      ratings: {
+        count: ratings.length,
+        average: ratings.length
+          ? round2(ratings.reduce((s, r) => s + r.stars, 0) / ratings.length)
+          : null,
+        // A rating of 1 or 2 is the signal worth acting on, so it is surfaced
+        // rather than being averaged away.
+        lowRatings: ratings.filter((r) => r.stars <= 2).length,
+        trend: [...byMonth.values()]
+          .sort((a, b) => a.month.localeCompare(b.month))
+          .map((m) => ({ month: m.month, average: round2(m.total / m.count), count: m.count })),
+      },
+      byDepartment: [...deptRows.values()].sort((a, b) => b.women - a.women),
     });
   })
 );

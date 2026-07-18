@@ -7,14 +7,17 @@ import {
   Clock,
   MapPin,
   Route,
-  SearchX,
+  Leaf,
   Star,
   Users,
+  Wallet,
 } from "lucide-react";
 import { get, post } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import LocationInput from "../components/LocationInput";
 import MapView from "../components/MapView";
-import { Avatar, Banner, EmptyState, money, when } from "../components/ui";
+import { EmptyRoadArt, RideTogetherArt } from "../components/illustrations";
+import { Avatar, Banner, EmptyState, WomenOnlyBadge, money, when } from "../components/ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -31,6 +34,7 @@ const toLocalInput = (d) => {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [mode, setMode] = useState("find");
   const [step, setStep] = useState("form");
 
@@ -40,6 +44,7 @@ export default function Dashboard() {
   const [seats, setSeats] = useState(1);
   const [fare, setFare] = useState(120);
   const [isRecurring, setIsRecurring] = useState(false);
+  const [womenOnly, setWomenOnly] = useState(false);
   const [recurrenceDays, setRecurrenceDays] = useState([1, 2, 3, 4, 5]);
 
   const [savedPlaces, setSavedPlaces] = useState([]);
@@ -100,6 +105,10 @@ export default function Dashboard() {
         destLng: dest.lng,
         seats: String(seats),
         departureAt: new Date(departureAt).toISOString(),
+        // Only narrows the results. Women-only rides are already excluded
+        // server-side for anyone who cannot book one, so this is a preference
+        // rather than the thing keeping the guarantee.
+        ...(womenOnly ? { womenOnly: "true" } : {}),
       });
       setRides((await get(`/rides/search?${params}`)).rides);
       setStep("results");
@@ -123,6 +132,7 @@ export default function Dashboard() {
         farePerSeat: Number(fare),
         isRecurring,
         recurrenceDays: isRecurring ? recurrenceDays : [],
+        womenOnly,
       });
       navigate("/trips");
     } catch (err) {
@@ -317,7 +327,7 @@ export default function Dashboard() {
         {rides.length === 0 ? (
           <div className="mt-4">
             <EmptyState
-              icon={SearchX}
+              art={<EmptyRoadArt className="w-full" />}
               title="No rides on this route yet"
               hint="Nobody is driving this way near your time. You could offer the ride instead."
               action={
@@ -344,11 +354,18 @@ export default function Dashboard() {
                     <div className="flex items-center gap-1.5">
                       <span className="truncate font-medium text-slate-900">{ride.driver.name}</span>
                       {ride.driverRating?.average && (
-                        <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-slate-600">
+                        <span
+                          title={`${ride.driverRating.average} from ${ride.driverRating.count} ${
+                            ride.driverRating.count === 1 ? "rating" : "ratings"
+                          }`}
+                          className="inline-flex shrink-0 items-center gap-0.5 text-xs text-slate-600"
+                        >
                           <Star size={11} className="text-amber-500" fill="currentColor" />
                           {ride.driverRating.average}
+                          <span className="text-slate-400">({ride.driverRating.count})</span>
                         </span>
                       )}
+                      {ride.womenOnly && <WomenOnlyBadge size="sm" />}
                     </div>
                     <div className="truncate text-xs text-slate-500">
                       {ride.driver.department && `${ride.driver.department} · `}
@@ -415,21 +432,39 @@ export default function Dashboard() {
 
   // -------------------------------------------------------------- form step
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-3xl">
+      {/* A headline that states the product, then the search itself. Leading
+          with the search rather than a settings-style form is what makes a
+          travel site feel like one. */}
+      <div className="relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-br from-brand-700 via-brand-700 to-brand-900 px-6 py-8 shadow-lift md:mb-8 md:px-9 md:py-9">
+        <div className="pointer-events-none absolute inset-0 bg-grid-soft opacity-[0.06]" />
+        <div className="pointer-events-none absolute -right-12 -top-20 h-60 w-60 rounded-full bg-brand-400/25 blur-3xl" />
+
+        <div className="relative flex items-center gap-6">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-[28px] font-black leading-[1.08] tracking-tight text-white md:text-[38px]">
+              Share the commute.
+              <br className="hidden sm:block" /> Split the cost.
+            </h1>
+            <p className="mt-3 max-w-md text-[15px] leading-relaxed text-brand-100/85">
+              {mode === "find"
+                ? "Book a seat with a colleague heading your way."
+                : "Driving in anyway? Offer your empty seats."}
+            </p>
+          </div>
+
+          {/* Held back until there is room for it: below `md` the headline and
+              the search field are what the screen is for. */}
+          <RideTogetherArt className="hidden w-48 shrink-0 lg:block" />
+        </div>
+      </div>
+
       <Tabs value={mode} onValueChange={(val) => { setMode(val); setError(""); }} className="mb-4">
-        <TabsList className="grid grid-cols-2 w-full">
+        <TabsList className="mx-auto grid w-full max-w-sm grid-cols-2">
           <TabsTrigger value="find">Find a ride</TabsTrigger>
           <TabsTrigger value="offer">Offer a ride</TabsTrigger>
         </TabsList>
       </Tabs>
-
-      {/* The same employee does both. Saying so removes the most common
-          confusion for anyone seeing the app for the first time. */}
-      <p className="mb-4 px-1 text-sm text-slate-500">
-        {mode === "find"
-          ? "Book a seat in a colleague's car and split the running cost."
-          : "Driving in anyway? Publish your empty seats and share the cost."}
-      </p>
 
       <div className="card space-y-4 p-4">
         <div className="relative space-y-3">
@@ -526,6 +561,27 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Offered only to women, because only a woman can drive or join one —
+            showing the control to everyone would advertise a setting most of
+            the people looking at it are not permitted to use. */}
+        {user?.gender === "FEMALE" && (
+          <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-3">
+            <label className="flex items-center justify-between gap-3">
+              <span>
+                <span className="text-[15px] font-medium text-violet-900">
+                  {mode === "find" ? "Women-only rides" : "Make this women-only"}
+                </span>
+                <span className="block text-xs text-violet-700/80">
+                  {mode === "find"
+                    ? "Show only rides where the driver and every passenger is a woman"
+                    : "Only women will be able to see and book this ride"}
+                </span>
+              </span>
+              <Switch checked={womenOnly} onCheckedChange={setWomenOnly} />
+            </label>
+          </div>
+        )}
+
         <div className="rounded-lg border border-slate-200 p-3">
           <label className="flex items-center justify-between gap-3">
             <span>
@@ -600,7 +656,7 @@ export default function Dashboard() {
                 onClick={() =>
                   setOrigin({ label: p.address, lat: p.lat, lng: p.lng })
                 }
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 shadow-card"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 shadow-card transition hover:border-brand-300 hover:bg-brand-50/40"
               >
                 <MapPin size={13} className="text-slate-400" />
                 {p.label}
@@ -609,6 +665,36 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Three reasons to use it, stated with this organisation's own numbers
+          rather than slogans. Real figures are more persuasive than claims. */}
+      <div className="mt-10 grid gap-4 sm:grid-cols-3">
+        {[
+          {
+            icon: Users,
+            title: "Colleagues only",
+            body: "Every ride is with someone from your organisation. No strangers.",
+          },
+          {
+            icon: Wallet,
+            title: "Cost, not fare",
+            body: "Fares come from real fuel price and mileage, split across the car.",
+          },
+          {
+            icon: Leaf,
+            title: "Measured impact",
+            body: "Every shared seat is one car that did not make the journey.",
+          },
+        ].map(({ icon: Icon, title, body }) => (
+          <div key={title} className="text-center sm:text-left">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+              <Icon size={19} />
+            </span>
+            <h3 className="mt-3 text-[15px] font-semibold text-slate-900">{title}</h3>
+            <p className="mt-1 text-sm leading-relaxed text-slate-500">{body}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
