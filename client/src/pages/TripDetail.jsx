@@ -183,6 +183,14 @@ export default function TripDetail() {
   const isDriver = ride && user && ride.driverId === user.id;
   const isLive = ride && ["STARTED", "IN_PROGRESS"].includes(ride.status);
 
+  // Pulled out as primitives so effects can depend on the route itself rather
+  // than on the ride object, which the status poll replaces every few seconds.
+  const routeGeometry = ride?.routeGeometry;
+  const originLat = ride?.originLat;
+  const originLng = ride?.originLng;
+  const destLat = ride?.destLat;
+  const destLng = ride?.destLng;
+
   // Poll the vehicle position only while the trip is actually running.
   useEffect(() => {
     if (!isLive) return;
@@ -210,19 +218,20 @@ export default function TripDetail() {
    * for the feature, and it is labelled as such in the interface.
    */
   useEffect(() => {
-    if (!simulating || !isDriver || !isLive || !ride) return;
+    // Guarded on the endpoints, not on the geometry: a ride published while
+    // the routing service was unreachable has no polyline at all, and those
+    // are exactly the rides that still need to be demonstrable. The
+    // straight-line fallback below covers them.
+    if (!simulating || !isDriver || !isLive || originLat == null || destLat == null) return;
 
-    const path = decodePolyline(ride.routeGeometry);
+    const path = decodePolyline(routeGeometry);
     // No road geometry (routing was unavailable): interpolate the straight line.
     const points =
       path.length > 1
         ? path
         : Array.from({ length: 40 }, (_, i) => {
             const t = i / 39;
-            return [
-              ride.originLat + (ride.destLat - ride.originLat) * t,
-              ride.originLng + (ride.destLng - ride.originLng) * t,
-            ];
+            return [originLat + (destLat - originLat) * t, originLng + (destLng - originLng) * t];
           });
 
     let i = Math.floor(points.length * 0.05);
@@ -234,7 +243,14 @@ export default function TripDetail() {
     }, 2000);
 
     return () => clearInterval(id);
-  }, [simulating, isDriver, isLive, ride, rideId]);
+    // Depends on the route's coordinates, never on the ride object.
+    //
+    // The status poll replaces that object every few seconds, and depending on
+    // it tore this interval down and rebuilt it each time — which reset the
+    // walk to its starting index, so the vehicle pinged the same spot forever
+    // and the marker never moved. These are primitives and stay stable while
+    // the trip is the same trip.
+  }, [simulating, isDriver, isLive, rideId, routeGeometry, originLat, originLng, destLat, destLng]);
 
   /**
    * The driver's device is the source of truth for position.
