@@ -68,6 +68,89 @@ const place = (label) => String(label ?? "").split(",")[0];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /**
+ * The driver's control over the journey.
+ *
+ * Starting and finishing a trip is the only thing on this screen that changes
+ * what everyone else sees — passengers cannot watch a car that has not been
+ * started, and nobody can pay until it is finished. It used to be one button
+ * at the foot of a long page, below the rider list, the fare and the pickup
+ * plan, which is a long way to scroll to do the single most important thing.
+ *
+ * The three stages are drawn out because "Mark in progress" means nothing on
+ * its own: seeing where it sits between setting off and arriving is what makes
+ * it obvious.
+ */
+const STAGES = [
+  { key: "PUBLISHED", label: "Not started" },
+  { key: "STARTED", label: "On the way" },
+  { key: "IN_PROGRESS", label: "Riders aboard" },
+  { key: "COMPLETED", label: "Finished" },
+];
+
+const NEXT_STEP = {
+  PUBLISHED: { label: "Start trip", hint: "Shares your location with your riders." },
+  STARTED: { label: "Mark in progress", hint: "Tap once everyone is in the car." },
+  IN_PROGRESS: { label: "Complete trip", hint: "Ends tracking and opens payment." },
+};
+
+function JourneyControl({ status, onAdvance, busy, riders }) {
+  const next = NEXT_STEP[status];
+  const current = STAGES.findIndex((s) => s.key === status);
+
+  return (
+    <div className="card mt-3 p-4">
+      <div className="flex items-center gap-2">
+        <Navigation size={15} className="text-brand-600" />
+        <h2 className="text-[15px] font-semibold text-slate-900">Your journey</h2>
+        {riders.length > 0 && (
+          <span className="ml-auto text-xs text-slate-500">
+            {riders.length} {riders.length === 1 ? "rider" : "riders"}
+          </span>
+        )}
+      </div>
+
+      {/* Stage rail. Completed stages fill in, the current one is ringed. */}
+      <ol className="mt-3 flex items-center gap-1.5">
+        {STAGES.map((s, i) => (
+          <li key={s.key} className="flex flex-1 flex-col gap-1.5">
+            <span
+              className={`h-1.5 rounded-full transition-colors ${
+                i < current ? "bg-brand-500" : i === current ? "bg-brand-600" : "bg-slate-200"
+              }`}
+            />
+            <span
+              className={`text-[10.5px] font-semibold leading-tight ${
+                i === current ? "text-brand-800" : i < current ? "text-slate-500" : "text-slate-400"
+              }`}
+            >
+              {s.label}
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      {next ? (
+        <>
+          <button
+            className="btn-primary mt-4 w-full shadow-lift"
+            onClick={onAdvance}
+            disabled={busy}
+          >
+            {status === "IN_PROGRESS" ? <Flag size={17} /> : <Play size={17} />}
+            {busy ? "Updating…" : next.label}
+          </button>
+          <p className="mt-1.5 text-center text-xs text-slate-500">{next.hint}</p>
+        </>
+      ) : (
+        <p className="mt-4 rounded-lg bg-brand-50 px-3 py-2.5 text-center text-sm font-medium text-brand-800">
+          {status === "CANCELLED" ? "This trip was cancelled." : "Trip complete. Your riders can pay now."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
  * The passenger's own leg of the trip.
  *
  * The map and the live strip both describe the driver's journey — where the
@@ -510,8 +593,6 @@ export default function TripDetail() {
   const myBooking = riders.find((b) => b.passengerId === user.id);
   const counterpart = isDriver ? riders[0]?.passenger : ride.driver;
 
-  const NEXT_LABEL = { PUBLISHED: "Start trip", STARTED: "Mark in progress", IN_PROGRESS: "Complete trip" };
-  const nextAction = NEXT_LABEL[ride.status];
   const guidance = nextStepFor({ isDriver, ride, riders, myBooking });
 
   return (
@@ -558,6 +639,10 @@ export default function TripDetail() {
       />
 
       {!isDriver && <YourJourney track={track} isLive={isLive} status={ride.status} />}
+
+      {isDriver && (
+        <JourneyControl status={ride.status} onAdvance={advance} busy={busy} riders={riders} />
+      )}
 
       {isLive && (
         <div className="card mt-3 flex items-center gap-3 border-brand-200 bg-brand-50 p-3">
@@ -778,19 +863,11 @@ export default function TripDetail() {
         <Banner>{error}</Banner>
       </div>
 
-      {/* Primary action.
-          Deliberately in normal flow: a sticky bar floats over whatever is
-          behind it, which on this screen meant covering the rider list and
-          fare. The page is short enough that the button is reachable without
-          pinning it. */}
+      {/* The driver's start/finish control lives in the journey card near the
+          top of the page, not down here — repeating it would put two identical
+          primary buttons on one screen and leave people guessing whether they
+          do the same thing. */}
       <div className="mt-5 space-y-2">
-        {isDriver && nextAction && (
-          <button className="btn-primary w-full shadow-lift" onClick={advance} disabled={busy}>
-            {ride.status === "IN_PROGRESS" ? <Flag size={17} /> : <Play size={17} />}
-            {busy ? "Updating" : nextAction}
-          </button>
-        )}
-
         {!isDriver && myBooking && ride.status === "COMPLETED" && myBooking.payment?.status !== "COMPLETED" && (
           <button
             className="btn-primary w-full shadow-lift"
