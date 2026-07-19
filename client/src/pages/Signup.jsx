@@ -28,7 +28,10 @@ export default function Signup() {
     email: "",
     password: "",
     confirm: "",
-    gender: "UNDISCLOSED",
+    // Nothing pre-selected. Defaulting to "prefer not to say" rendered that
+    // option as already chosen, so someone who wanted women-only rides had no
+    // reason to look at the field — and then could not see those rides at all.
+    gender: "",
   });
   const [org, setOrg] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -75,7 +78,9 @@ export default function Signup() {
         email: form.email.trim(),
         password: form.password,
         phone: form.phone.trim() || undefined,
-        gender: form.gender,
+        // Omitted when untouched, so the server applies its own default rather
+        // than recording a choice this person never made.
+        gender: form.gender || undefined,
       });
       navigate("/dashboard");
     } catch (err) {
@@ -133,13 +138,13 @@ export default function Signup() {
               {[
                 { value: "FEMALE", label: "Female" },
                 { value: "MALE", label: "Male" },
-                { value: "UNDISCLOSED", label: "Skip" },
+                { value: "UNDISCLOSED", label: "Prefer not to say" },
               ].map((c) => (
                 <button
                   key={c.value}
                   type="button"
                   onClick={() => setForm({ ...form, gender: c.value })}
-                  className={`min-h-[42px] rounded-xl border px-2 text-[13px] font-semibold transition ${
+                  className={`min-h-[42px] rounded-xl border px-2 text-[12.5px] font-semibold leading-tight transition ${
                     form.gender === c.value
                       ? "border-brand-500 bg-brand-50 text-brand-800 ring-4 ring-brand-500/10"
                       : "border-slate-200 bg-white text-slate-600 hover:border-brand-300"
@@ -150,7 +155,8 @@ export default function Signup() {
               ))}
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              Used only to match women-only rides. You can change it later.
+              Used only to match women-only rides — those stay hidden unless you set this. You
+              can change it any time in Settings.
             </p>
           </div>
 
