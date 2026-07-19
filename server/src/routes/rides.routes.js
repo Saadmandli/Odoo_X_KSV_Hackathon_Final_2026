@@ -195,23 +195,36 @@ router.get(
     // A woman can additionally narrow the results to women-only rides.
     const womenOnlyRequested = req.query.womenOnly === "true";
 
-    const rides = await prisma.ride.findMany({
-      where: {
-        orgId: req.user.orgId,
-        status: "PUBLISHED",
-        seatsLeft: { gte: seats },
-        departureAt: { gte: from, lte: to },
-        driverId: { not: req.user.id }, // never match a user to their own ride
-        ...(canSeeWomenOnly
-          ? womenOnlyRequested
-            ? { womenOnly: true }
-            : {}
-          : { womenOnly: false }),
-      },
-      include: rideInclude,
-      orderBy: { departureAt: "asc" },
-      take: 100,
-    });
+    const matches = {
+      orgId: req.user.orgId,
+      status: "PUBLISHED",
+      seatsLeft: { gte: seats },
+      departureAt: { gte: from, lte: to },
+      ...(canSeeWomenOnly
+        ? womenOnlyRequested
+          ? { womenOnly: true }
+          : {}
+        : { womenOnly: false }),
+    };
+
+    const [rides, ownMatching] = await Promise.all([
+      prisma.ride.findMany({
+        // Never match someone to a ride they are driving: they cannot book a
+        // seat in their own car.
+        where: { ...matches, driverId: { not: req.user.id } },
+        include: rideInclude,
+        orderBy: { departureAt: "asc" },
+        take: 100,
+      }),
+      // How many of their own rides that filter just removed.
+      //
+      // Publishing a ride and then searching the same route returns nothing,
+      // which reads exactly like the ride was never saved — it is the first
+      // thing someone does to check their own ride worked. Counting the
+      // exclusion lets the screen say "you are driving this one yourself"
+      // instead of leaving a silence that looks like data loss.
+      prisma.ride.count({ where: { ...matches, driverId: req.user.id } }),
+    ]);
 
     const MAX_DETOUR_KM = Number(req.query.maxDetourKm || 12);
     const scored = rides
@@ -240,6 +253,8 @@ router.get(
 
     res.json({
       count: scored.length,
+      // Rides on this route, at this time, that the caller is driving.
+      ownMatching,
       rides: scored.map((m) => ({
         ...shapeRide(m.ride),
         driverRating: ratingBy.get(m.ride.driverId) ?? { average: null, count: 0 },

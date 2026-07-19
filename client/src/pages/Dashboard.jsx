@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowUpDown,
   CalendarDays,
+  CarFront,
   Clock,
   MapPin,
   Route,
@@ -53,6 +54,9 @@ export default function Dashboard() {
 
   const [route, setRoute] = useState(null);
   const [rides, setRides] = useState([]);
+  // Rides on this route the searcher is driving themselves, and which were
+  // therefore left out of the results.
+  const [ownMatching, setOwnMatching] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -118,7 +122,9 @@ export default function Dashboard() {
         // rather than the thing keeping the guarantee.
         ...(womenOnly ? { womenOnly: "true" } : {}),
       });
-      setRides((await get(`/rides/search?${params}`)).rides);
+      const found = await get(`/rides/search?${params}`);
+      setRides(found.rides);
+      setOwnMatching(found.ownMatching ?? 0);
       setStep("results");
     } catch (err) {
       setError(err.message);
@@ -331,6 +337,24 @@ export default function Dashboard() {
         <div className="mt-4">
           <Banner>{error}</Banner>
         </div>
+
+        {/* Your own rides are filtered out of search — you cannot book a seat in
+            your own car. Without saying so, publishing a ride and then
+            searching the same route shows nothing, which looks exactly like the
+            ride was never saved. */}
+        {ownMatching > 0 && (
+          <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-3">
+            <CarFront size={16} className="mt-0.5 shrink-0 text-brand-700" />
+            <p className="text-sm text-brand-900">
+              You are driving {ownMatching === 1 ? "a ride" : `${ownMatching} rides`} on this route
+              yourself, so {ownMatching === 1 ? "it is" : "they are"} not listed here.{" "}
+              <Link to="/trips" className="font-semibold underline">
+                See {ownMatching === 1 ? "it" : "them"} under My trips
+              </Link>
+              .
+            </p>
+          </div>
+        )}
 
         {rides.length === 0 ? (
           <div className="mt-4">
