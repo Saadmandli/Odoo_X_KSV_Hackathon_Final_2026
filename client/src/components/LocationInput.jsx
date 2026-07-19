@@ -20,8 +20,12 @@ export default function LocationInput({ value, onChange, placeholder, savedPlace
   const abortRef = useRef(null);
   const boxRef = useRef(null);
 
+  // Only mirrors a real selection into the box. It deliberately does not clear
+  // the text when the selection is cleared: editing after picking clears the
+  // selection (see below), and wiping the box at that moment would delete what
+  // the person was in the middle of typing.
   useEffect(() => {
-    setQuery(value?.label ?? "");
+    if (value?.label) setQuery(value.label);
   }, [value?.label]);
 
   useEffect(() => {
@@ -31,6 +35,11 @@ export default function LocationInput({ value, onChange, placeholder, savedPlace
     document.addEventListener("mousedown", onClickAway);
     return () => document.removeEventListener("mousedown", onClickAway);
   }, []);
+
+  // Typed something, then moved on without choosing anything. Flagged the
+  // moment the list closes rather than on the next button press, so the
+  // problem is pointed at while the field is still the thing being looked at.
+  const unresolved = !open && !value && query.trim().length >= 3;
 
   useEffect(() => {
     if (query.length < 3 || query === value?.label) {
@@ -95,12 +104,21 @@ export default function LocationInput({ value, onChange, placeholder, savedPlace
           className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
         />
         <input
-          className="field pl-9"
+          className={`field pl-9 ${unresolved ? "border-amber-300 bg-amber-50/40" : ""}`}
           placeholder={placeholder}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
             setOpen(true);
+            // Editing after choosing a place drops the choice.
+            //
+            // Without this the coordinates stay pinned to the old selection
+            // while the box shows the new text, so someone who picked "Bopal",
+            // then typed "Vastrapur" and pressed on, published a ride that
+            // said Vastrapur and actually departed from Bopal. Losing the
+            // selection is recoverable; silently travelling from the wrong
+            // place is not.
+            if (value && e.target.value !== value.label) onChange(null);
           }}
           onFocus={() => setOpen(true)}
         />
@@ -176,6 +194,12 @@ export default function LocationInput({ value, onChange, placeholder, savedPlace
             </div>
           )}
         </div>
+      )}
+
+      {unresolved && (
+        <p className="mt-1 text-xs font-medium text-amber-700">
+          Pick one of the suggestions to set this location.
+        </p>
       )}
     </div>
   );

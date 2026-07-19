@@ -73,7 +73,15 @@ export default function Dashboard() {
 
   const confirmRoute = async () => {
     setError("");
-    if (!origin || !dest) return setError("Pick a starting point and a destination.");
+    // Names the field that is missing, and says what "missing" means. The old
+    // message asked someone to pick a starting point while the box in front of
+    // them was full of text they had just typed — the text is not a location
+    // until a suggestion is chosen, and nothing said so.
+    if (!origin && !dest) {
+      return setError("Choose a pickup and a destination from the suggestions.");
+    }
+    if (!origin) return setError("Choose your pickup from the list of suggestions.");
+    if (!dest) return setError("Choose your destination from the list of suggestions.");
 
     setBusy(true);
     try {
