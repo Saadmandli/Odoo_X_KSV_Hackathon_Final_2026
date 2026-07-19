@@ -11,7 +11,11 @@ import { Avatar, Banner } from "../components/ui";
 const TEST_ACCOUNTS = [
   { name: "Prayag Panchani", email: "prayag@northbridge.in", password: "password123" },
   { name: "Saad Mandli", email: "saad@northbridge.in", password: "password123" },
-  { name: "Ishita Rao", email: "ishita@northbridge.in", password: "password123" },
+  // Two women, because the women-only ride needs both sides of it to be one tap
+  // away: Ishita drives that car, Priya is the colleague who books a seat in it.
+  // With only one woman on this list the feature can be described but not shown.
+  { name: "Ishita Rao", email: "ishita@northbridge.in", password: "password123", note: "Drives women-only" },
+  { name: "Priya Shah", email: "priya@northbridge.in", password: "password123", note: "Books women-only" },
   { name: "Shrey Naik", email: "shrey@northbridge.in", password: "admin123", admin: true },
 ];
 
@@ -142,7 +146,7 @@ function DemoAccounts({ selected, onPick }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2.5">
-        {TEST_ACCOUNTS.map(({ name, email, password, admin }) => {
+        {TEST_ACCOUNTS.map(({ name, email, password, admin, note }) => {
           const isSelected = selected === email;
           return (
             <button
@@ -160,8 +164,12 @@ function DemoAccounts({ selected, onPick }) {
                 <span className="block truncate text-[12.5px] font-bold text-slate-800">
                   {name.split(" ")[0]}
                 </span>
-                <span className="block truncate text-[10.5px] font-medium text-slate-400">
-                  {admin ? "Administrator" : "Employee"}
+                <span
+                  className={`block truncate text-[10.5px] font-medium ${
+                    note ? "text-violet-600" : "text-slate-400"
+                  }`}
+                >
+                  {note ?? (admin ? "Administrator" : "Employee")}
                 </span>
               </span>
             </button>

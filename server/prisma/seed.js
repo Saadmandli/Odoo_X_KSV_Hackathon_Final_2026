@@ -147,6 +147,25 @@ async function main() {
     }),
   });
 
+  // Priya exists so the women-only feature can be shown from both sides in one
+  // sitting: Ishita drives the car, Priya is the woman who books a seat in it.
+  // Deliberately left with no vehicle, no history and no booking — she is the
+  // account to sign into on stage and book the women-only ride live, and a
+  // rider with nothing behind her is also the clearest way to show a colleague
+  // joining the scheme for the first time.
+  const priya = await prisma.user.create({
+    data: employee("Priya Shah", "priya@northbridge.in", {
+      gender: "FEMALE",
+      emergencyContactName: "Nisha Shah (mother)",
+      emergencyContactPhone: "+919825044003",
+      department: "Human Resources",
+      employeeCode: "NB007",
+      phone: "+919825011007",
+      avatarColor: "#c026d3",
+      balance: 800,
+    }),
+  });
+
   const meera = await prisma.user.create({
     data: employee("Meera Joshi", "meera@northbridge.in", {
       gender: "FEMALE",
@@ -181,6 +200,9 @@ async function main() {
     [ishita.id]: PLACES.vastrapur,
     [devansh.id]: PLACES.gota,
     [meera.id]: PLACES.adalaj,
+    // Thaltej sits on the route Ishita's women-only car already takes, so
+    // Priya's saved Home is somewhere that ride can realistically collect her.
+    [priya.id]: PLACES.thaltej,
   };
 
   for (const [userId, home] of Object.entries(homes)) {
@@ -499,9 +521,10 @@ Seed complete — ${org.name}
   Shrey Naik       shrey@northbridge.in     / admin123       Honda City GJ01MN2266   (also administrator)
   Prayag Panchani  prayag@northbridge.in    / password123    Maruti Swift GJ18AB4471
   Saad Mandli      saad@northbridge.in      / password123    Hyundai i20 GJ01CD9032
-  Ishita Rao       ishita@northbridge.in    / password123    Tata Nexon GJ27EF1188
-  Meera Joshi      meera@northbridge.in     / password123    Maruti Ertiga GJ05PQ7741
-  Devansh Mehta    devansh@northbridge.in   / password123    no vehicle
+  Ishita Rao       ishita@northbridge.in    / password123    Tata Nexon GJ27EF1188    (woman — drives the women-only ride)
+  Meera Joshi      meera@northbridge.in     / password123    Maruti Ertiga GJ05PQ7741 (woman)
+  Priya Shah       priya@northbridge.in     / password123    no vehicle               (woman — sign in as her to book the women-only ride)
+  Devansh Mehta    devansh@northbridge.in   / password123    no vehicle               (man — cannot see women-only rides)
 
   Any of them can publish a ride or book a seat.
 
