@@ -153,6 +153,11 @@ export default function TripDetail() {
   const [copied, setCopied] = useState(false);
   const [repeatNote, setRepeatNote] = useState("");
   const [simulating, setSimulating] = useState(false);
+  // How many route points the stand-in covers per tick. A real journey takes
+  // one to two minutes to walk end to end, which is a long time to watch a dot
+  // while explaining it, so the pace can be raised without changing how often
+  // it reports — the ping rate stays the same, each ping just moves further.
+  const [simSpeed, setSimSpeed] = useState(1);
   const [gpsError, setGpsError] = useState("");
 
   const chatEndRef = useRef(null);
@@ -234,12 +239,17 @@ export default function TripDetail() {
             return [originLat + (destLat - originLat) * t, originLng + (destLng - originLng) * t];
           });
 
+    const stride = Math.max(1, Math.round(points.length / 60)) * simSpeed;
+
     let i = Math.floor(points.length * 0.05);
     const id = setInterval(() => {
       if (i >= points.length) return clearInterval(id);
       const [lat, lng] = points[i];
-      post(`/rides/${rideId}/ping`, { lat, lng, speedKmph: 32 }).catch(() => {});
-      i += Math.max(1, Math.round(points.length / 60));
+      // Reported speed follows the stride, so a sped-up run does not claim to
+      // be crawling at 32 km/h while covering four times the ground — the ETA
+      // is derived from this and would contradict what is on screen.
+      post(`/rides/${rideId}/ping`, { lat, lng, speedKmph: 32 * simSpeed }).catch(() => {});
+      i += stride;
     }, 2000);
 
     return () => clearInterval(id);
@@ -250,7 +260,18 @@ export default function TripDetail() {
     // walk to its starting index, so the vehicle pinged the same spot forever
     // and the marker never moved. These are primitives and stay stable while
     // the trip is the same trip.
-  }, [simulating, isDriver, isLive, rideId, routeGeometry, originLat, originLng, destLat, destLng]);
+  }, [
+    simulating,
+    simSpeed,
+    isDriver,
+    isLive,
+    rideId,
+    routeGeometry,
+    originLat,
+    originLng,
+    destLat,
+    destLng,
+  ]);
 
   /**
    * The driver's device is the source of truth for position.
@@ -504,16 +525,40 @@ export default function TripDetail() {
               for a moving vehicle. Labelled plainly so nobody mistakes the
               simulation for the real feed. */}
           {isDriver && (
-            <button
-              onClick={() => setSimulating((v) => !v)}
-              className={`shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                simulating
-                  ? "bg-brand-600 text-white"
-                  : "bg-white text-brand-800 shadow-card hover:bg-brand-50"
-              }`}
-            >
-              {simulating ? "Simulating…" : "Simulate driving"}
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                onClick={() => setSimulating((v) => !v)}
+                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+                  simulating
+                    ? "bg-brand-600 text-white"
+                    : "bg-white text-brand-800 shadow-card hover:bg-brand-50"
+                }`}
+              >
+                {simulating ? "Simulating…" : "Simulate driving"}
+              </button>
+
+              {/* Pace control, shown only once the stand-in is running. An
+                  end-to-end run takes over a minute in real time, which is
+                  longer than anyone wants to watch while talking over it. */}
+              {simulating && (
+                <span className="flex overflow-hidden rounded-lg bg-white shadow-card">
+                  {[1, 4].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setSimSpeed(s)}
+                      aria-label={`Simulate at ${s} times speed`}
+                      className={`px-2 py-1.5 text-xs font-semibold transition ${
+                        simSpeed === s
+                          ? "bg-brand-100 text-brand-800"
+                          : "text-slate-500 hover:bg-slate-50"
+                      }`}
+                    >
+                      {s}×
+                    </button>
+                  ))}
+                </span>
+              )}
+            </div>
           )}
           <button
             onClick={share}
