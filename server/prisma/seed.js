@@ -285,19 +285,24 @@ async function main() {
     data: { seatsLeft: pooled.totalSeats - 3 },
   });
 
-  // Meera takes a seat in Ishita's women-only car. One booking, not eight: it
-  // is the single row needed to show a women-only ride actually carrying
-  // someone, and it still leaves two seats free to book live on stage.
+  // Ishita drives the women-only car; Priya is already in it. That single pair
+  // is the whole feature in one row — a woman driving, a woman riding — and it
+  // means both sides can be opened straight away without booking anything
+  // first. Priya boards at Thaltej, which is her saved Home and sits on the
+  // route, so the pickup is somewhere the car would actually pass.
+  //
+  // One booking, not several: the ride keeps two of its three seats free, so a
+  // seat can still be booked live on stage without cancelling anyone.
   const womenOnlyRide = created[3];
   await prisma.booking.create({
     data: {
       rideId: womenOnlyRide.id,
-      passengerId: meera.id,
+      passengerId: priya.id,
       seats: 1,
       fareAmount: Number(womenOnlyRide.farePerSeat),
-      pickupLabel: PLACES.vastrapur.label,
-      pickupLat: PLACES.vastrapur.lat,
-      pickupLng: PLACES.vastrapur.lng,
+      pickupLabel: PLACES.thaltej.label,
+      pickupLat: PLACES.thaltej.lat,
+      pickupLng: PLACES.thaltej.lng,
       dropLabel: PLACES.giftCity.label,
       dropLat: PLACES.giftCity.lat,
       dropLng: PLACES.giftCity.lng,
@@ -523,7 +528,7 @@ Seed complete — ${org.name}
   Saad Mandli      saad@northbridge.in      / password123    Hyundai i20 GJ01CD9032
   Ishita Rao       ishita@northbridge.in    / password123    Tata Nexon GJ27EF1188    (woman — drives the women-only ride)
   Meera Joshi      meera@northbridge.in     / password123    Maruti Ertiga GJ05PQ7741 (woman)
-  Priya Shah       priya@northbridge.in     / password123    no vehicle               (woman — sign in as her to book the women-only ride)
+  Priya Shah       priya@northbridge.in     / password123    no vehicle               (woman — already riding in Ishita's women-only car)
   Devansh Mehta    devansh@northbridge.in   / password123    no vehicle               (man — cannot see women-only rides)
 
   Any of them can publish a ride or book a seat.

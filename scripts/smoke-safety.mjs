@@ -131,14 +131,20 @@ console.log("\n--- who can book one ---");
   });
   ok("a man cannot book it even knowing the id", blocked.status === 403, blocked.json.error);
 
-  // The seed already puts Meera in this car, so booking again would be refused
-  // as a duplicate rather than as a gender check — which would look like a
-  // pass of the wrong thing. Release the seat first so the next call is
+  // If the seed already put this woman in the car, booking again would be
+  // refused as a duplicate rather than by the gender rule — which would look
+  // like a pass of the wrong thing. Release her seat first so the next call is
   // genuinely testing whether a woman is allowed in.
   const hers = (await call("/bookings/my-trips", { token: meera })).json.asPassenger.find(
     (b) => b.rideId === womenOnlyRideId
   );
   if (hers) await call(`/bookings/${hers.id}/cancel`, { method: "POST", token: meera });
+
+  // Measured immediately before booking, and compared as a difference.
+  // Asserting an absolute number tied this test to exactly how many riders the
+  // seed happened to put in the car, so adding one broke a check that was
+  // meant to be about the booking claiming a seat at all.
+  const before = (await call(`/rides/${womenOnlyRideId}`, { token: meera })).json.ride.seatsLeft;
 
   const allowed = await call("/bookings", {
     method: "POST",
@@ -152,9 +158,9 @@ console.log("\n--- who can book one ---");
   });
   ok("a woman can book it", allowed.status === 201, allowed.json.error ?? "booked");
 
-  // Seats must still have been claimed, not silently skipped.
-  const { ride } = (await call(`/rides/${womenOnlyRideId}`, { token: meera })).json;
-  ok("the seat was actually taken", ride.seatsLeft === 2, `seatsLeft ${ride.seatsLeft}`);
+  // Seats must actually have been claimed, not silently skipped.
+  const after = (await call(`/rides/${womenOnlyRideId}`, { token: meera })).json.ride.seatsLeft;
+  ok("the seat was actually taken", after === before - 1, `seatsLeft ${before} -> ${after}`);
 }
 
 console.log("\n--- SOS ---");
