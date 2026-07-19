@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Check,
   Copy,
+  MapPin,
   MessageSquare,
   Navigation,
   Phone,
@@ -65,6 +66,86 @@ function metresBetween(aLat, aLng, bLat, bLng) {
 
 const place = (label) => String(label ?? "").split(",")[0];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * The passenger's own leg of the trip.
+ *
+ * The map and the live strip both describe the driver's journey — where the
+ * car started, when it reaches the destination. A rider needs a different
+ * thing: where to stand, and how long until the car is there. "Arriving in 40
+ * minutes" is the wrong number to act on if your pickup is the second stop.
+ *
+ * Shown to passengers only; the driver has the pickup plan instead.
+ */
+function YourJourney({ track, isLive, status }) {
+  const pickup = track?.myPickup;
+  if (!pickup) return null;
+
+  const waiting = isLive && pickup.distanceKm != null && !pickup.arrived;
+  const here = isLive && pickup.arrived;
+
+  return (
+    <div className="card mt-3 p-4">
+      <div className="flex items-center gap-2">
+        <MapPin size={15} className="text-violet-600" />
+        <h2 className="text-[15px] font-semibold text-slate-900">Your journey</h2>
+      </div>
+
+      {/* The headline is whichever fact the person can act on right now. */}
+      {here && (
+        <p className="mt-2 rounded-lg bg-brand-50 px-3 py-2 text-sm font-medium text-brand-800">
+          Your driver is at the pickup point. Look out for the car.
+        </p>
+      )}
+      {waiting && (
+        <p className="mt-2 rounded-lg bg-violet-50 px-3 py-2 text-sm font-medium text-violet-900">
+          Reaching your pickup in about {pickup.etaMinutes} min · {pickup.distanceKm} km away
+        </p>
+      )}
+      {!isLive && status === "PUBLISHED" && (
+        <p className="mt-2 text-sm text-slate-500">
+          Be at your pickup point a couple of minutes before the departure time.
+        </p>
+      )}
+
+      <ol className="mt-3 space-y-3">
+        <li className="flex gap-3">
+          <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-violet-600" />
+          <span className="min-w-0">
+            <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              You get on
+            </span>
+            <span className="block text-[15px] text-slate-900">{pickup.label}</span>
+          </span>
+        </li>
+        {track?.myDrop && (
+          <li className="flex gap-3">
+            <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-rose-600" />
+            <span className="min-w-0">
+              <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                You get off
+              </span>
+              <span className="block text-[15px] text-slate-900">{track.myDrop.label}</span>
+            </span>
+          </li>
+        )}
+      </ol>
+
+      {/* Walking directions are the one thing this app should not try to own —
+          the phone's own maps app already does it, knows the footpaths, and is
+          what someone will follow while actually walking. */}
+      <a
+        href={`https://www.google.com/maps/dir/?api=1&destination=${pickup.lat},${pickup.lng}&travelmode=walking`}
+        target="_blank"
+        rel="noreferrer"
+        className="btn-secondary btn-sm mt-3 w-full"
+      >
+        <Navigation size={14} />
+        Directions to your pickup
+      </a>
+    </div>
+  );
+}
 
 /**
  * Turns the trip state machine into one plain sentence.
@@ -472,8 +553,11 @@ export default function TripDetail() {
         dest={{ lat: ride.destLat, lng: ride.destLng }}
         geometry={ride.routeGeometry}
         vehicle={track?.position}
+        pickup={track?.myPickup}
         className="mt-4 h-60 w-full sm:h-80"
       />
+
+      {!isDriver && <YourJourney track={track} isLive={isLive} status={ride.status} />}
 
       {isLive && (
         <div className="card mt-3 flex items-center gap-3 border-brand-200 bg-brand-50 p-3">

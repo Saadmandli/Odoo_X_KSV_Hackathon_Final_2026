@@ -369,7 +369,20 @@ router.get(
   ah(async (req, res) => {
     const ride = await prisma.ride.findFirst({
       where: { id: req.params.id, orgId: req.user.orgId },
-      include: { bookings: { select: { passengerId: true } } },
+      include: {
+        bookings: {
+          where: { status: { not: "CANCELLED" } },
+          select: {
+            passengerId: true,
+            pickupLabel: true,
+            pickupLat: true,
+            pickupLng: true,
+            dropLabel: true,
+            dropLat: true,
+            dropLng: true,
+          },
+        },
+      },
     });
     if (!ride) return res.status(404).json({ error: "Ride not found" });
 
@@ -385,8 +398,40 @@ router.get(
 
     const live = last ? liveProgress(ride, last) : {};
 
+    // A passenger cares about a different number from the driver. "Arriving in
+    // 40 minutes" is the time to the destination; what they actually need to
+    // know is when the car reaches *them*, so they can be at the kerb. Sent
+    // only to the person whose pickup it is.
+    const mine = ride.bookings.find((b) => b.passengerId === req.user.id);
+    const pickup =
+      mine && last && mine.pickupLat != null
+        ? (() => {
+            const km = haversineKm(last.lat, last.lng, mine.pickupLat, mine.pickupLng);
+            const reported = Number(last.speedKmph) || 0;
+            const kmph = reported > 5 ? (reported + 28) / 2 : 28;
+            return {
+              label: mine.pickupLabel,
+              lat: mine.pickupLat,
+              lng: mine.pickupLng,
+              distanceKm: round1(km),
+              etaMinutes: Math.max(1, Math.round((km / kmph) * 60)),
+              // Under 150 m the car is effectively at the kerb, and counting
+              // down further would have someone staring at a phone instead of
+              // looking for it.
+              arrived: km < 0.15,
+            };
+          })()
+        : mine && mine.pickupLat != null
+          ? { label: mine.pickupLabel, lat: mine.pickupLat, lng: mine.pickupLng }
+          : null;
+
     res.json({
       status: ride.status,
+      myPickup: pickup,
+      myDrop:
+        mine && mine.dropLat != null
+          ? { label: mine.dropLabel, lat: mine.dropLat, lng: mine.dropLng }
+          : null,
       position: last && {
         lat: last.lat,
         lng: last.lng,
