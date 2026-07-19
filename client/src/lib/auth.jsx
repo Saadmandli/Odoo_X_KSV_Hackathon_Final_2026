@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { get, post, setToken, clearToken, getToken } from "./api";
+import { get, post, setToken, clearToken, getToken, TOKEN_KEY } from "./api";
 
 const AuthContext = createContext(null);
 
@@ -28,6 +28,38 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     refresh();
+  }, [refresh]);
+
+  /**
+   * Keeps every tab honest about who is signed in.
+   *
+   * The token lives in localStorage, which is shared by every tab on the
+   * origin — so signing into a second account in another tab silently replaces
+   * the first one's credentials. Without this listener that tab carried on
+   * rendering the previous user's screens while its requests were being made
+   * as somebody else: a driver still looking at "You are driving" whose calls
+   * were arriving as a passenger. Being shown the wrong person's view is worse
+   * than being asked to sign in again.
+   *
+   * The event only fires in *other* tabs, so this never reacts to its own
+   * sign-in or sign-out.
+   */
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key !== null && e.key !== TOKEN_KEY) return;
+
+      if (!getToken()) {
+        setUser(null);
+        setOrg(null);
+        setStatus("anon");
+        return;
+      }
+      // A different account took over: re-read who we now are.
+      refresh();
+    };
+
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, [refresh]);
 
   const login = async (email, password) => {

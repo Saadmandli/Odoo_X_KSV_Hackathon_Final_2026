@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Check,
   Copy,
+  MapPin,
   MessageSquare,
   Navigation,
   Phone,
@@ -65,6 +66,169 @@ function metresBetween(aLat, aLng, bLat, bLng) {
 
 const place = (label) => String(label ?? "").split(",")[0];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * The driver's control over the journey.
+ *
+ * Starting and finishing a trip is the only thing on this screen that changes
+ * what everyone else sees — passengers cannot watch a car that has not been
+ * started, and nobody can pay until it is finished. It used to be one button
+ * at the foot of a long page, below the rider list, the fare and the pickup
+ * plan, which is a long way to scroll to do the single most important thing.
+ *
+ * The three stages are drawn out because "Mark in progress" means nothing on
+ * its own: seeing where it sits between setting off and arriving is what makes
+ * it obvious.
+ */
+const STAGES = [
+  { key: "PUBLISHED", label: "Not started" },
+  { key: "STARTED", label: "On the way" },
+  { key: "IN_PROGRESS", label: "Riders aboard" },
+  { key: "COMPLETED", label: "Finished" },
+];
+
+const NEXT_STEP = {
+  PUBLISHED: { label: "Start trip", hint: "Shares your location with your riders." },
+  STARTED: { label: "Mark in progress", hint: "Tap once everyone is in the car." },
+  IN_PROGRESS: { label: "Complete trip", hint: "Ends tracking and opens payment." },
+};
+
+function JourneyControl({ status, onAdvance, busy, riders }) {
+  const next = NEXT_STEP[status];
+  const current = STAGES.findIndex((s) => s.key === status);
+
+  return (
+    <div className="card mt-3 p-4">
+      <div className="flex items-center gap-2">
+        <Navigation size={15} className="text-brand-600" />
+        <h2 className="text-[15px] font-semibold text-slate-900">Your journey</h2>
+        {riders.length > 0 && (
+          <span className="ml-auto text-xs text-slate-500">
+            {riders.length} {riders.length === 1 ? "rider" : "riders"}
+          </span>
+        )}
+      </div>
+
+      {/* Stage rail. Completed stages fill in, the current one is ringed. */}
+      <ol className="mt-3 flex items-center gap-1.5">
+        {STAGES.map((s, i) => (
+          <li key={s.key} className="flex flex-1 flex-col gap-1.5">
+            <span
+              className={`h-1.5 rounded-full transition-colors ${
+                i < current ? "bg-brand-500" : i === current ? "bg-brand-600" : "bg-slate-200"
+              }`}
+            />
+            <span
+              className={`text-[10.5px] font-semibold leading-tight ${
+                i === current ? "text-brand-800" : i < current ? "text-slate-500" : "text-slate-400"
+              }`}
+            >
+              {s.label}
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      {next ? (
+        <>
+          <button
+            className="btn-primary mt-4 w-full shadow-lift"
+            onClick={onAdvance}
+            disabled={busy}
+          >
+            {status === "IN_PROGRESS" ? <Flag size={17} /> : <Play size={17} />}
+            {busy ? "Updating…" : next.label}
+          </button>
+          <p className="mt-1.5 text-center text-xs text-slate-500">{next.hint}</p>
+        </>
+      ) : (
+        <p className="mt-4 rounded-lg bg-brand-50 px-3 py-2.5 text-center text-sm font-medium text-brand-800">
+          {status === "CANCELLED" ? "This trip was cancelled." : "Trip complete. Your riders can pay now."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The passenger's own leg of the trip.
+ *
+ * The map and the live strip both describe the driver's journey — where the
+ * car started, when it reaches the destination. A rider needs a different
+ * thing: where to stand, and how long until the car is there. "Arriving in 40
+ * minutes" is the wrong number to act on if your pickup is the second stop.
+ *
+ * Shown to passengers only; the driver has the pickup plan instead.
+ */
+function YourJourney({ track, isLive, status }) {
+  const pickup = track?.myPickup;
+  if (!pickup) return null;
+
+  const waiting = isLive && pickup.distanceKm != null && !pickup.arrived;
+  const here = isLive && pickup.arrived;
+
+  return (
+    <div className="card mt-3 p-4">
+      <div className="flex items-center gap-2">
+        <MapPin size={15} className="text-violet-600" />
+        <h2 className="text-[15px] font-semibold text-slate-900">Your journey</h2>
+      </div>
+
+      {/* The headline is whichever fact the person can act on right now. */}
+      {here && (
+        <p className="mt-2 rounded-lg bg-brand-50 px-3 py-2 text-sm font-medium text-brand-800">
+          Your driver is at the pickup point. Look out for the car.
+        </p>
+      )}
+      {waiting && (
+        <p className="mt-2 rounded-lg bg-violet-50 px-3 py-2 text-sm font-medium text-violet-900">
+          Reaching your pickup in about {pickup.etaMinutes} min · {pickup.distanceKm} km away
+        </p>
+      )}
+      {!isLive && status === "PUBLISHED" && (
+        <p className="mt-2 text-sm text-slate-500">
+          Be at your pickup point a couple of minutes before the departure time.
+        </p>
+      )}
+
+      <ol className="mt-3 space-y-3">
+        <li className="flex gap-3">
+          <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-violet-600" />
+          <span className="min-w-0">
+            <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              You get on
+            </span>
+            <span className="block text-[15px] text-slate-900">{pickup.label}</span>
+          </span>
+        </li>
+        {track?.myDrop && (
+          <li className="flex gap-3">
+            <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-rose-600" />
+            <span className="min-w-0">
+              <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                You get off
+              </span>
+              <span className="block text-[15px] text-slate-900">{track.myDrop.label}</span>
+            </span>
+          </li>
+        )}
+      </ol>
+
+      {/* Walking directions are the one thing this app should not try to own —
+          the phone's own maps app already does it, knows the footpaths, and is
+          what someone will follow while actually walking. */}
+      <a
+        href={`https://www.google.com/maps/dir/?api=1&destination=${pickup.lat},${pickup.lng}&travelmode=walking`}
+        target="_blank"
+        rel="noreferrer"
+        className="btn-secondary btn-sm mt-3 w-full"
+      >
+        <Navigation size={14} />
+        Directions to your pickup
+      </a>
+    </div>
+  );
+}
 
 /**
  * Turns the trip state machine into one plain sentence.
@@ -153,6 +317,11 @@ export default function TripDetail() {
   const [copied, setCopied] = useState(false);
   const [repeatNote, setRepeatNote] = useState("");
   const [simulating, setSimulating] = useState(false);
+  // How many route points the stand-in covers per tick. A real journey takes
+  // one to two minutes to walk end to end, which is a long time to watch a dot
+  // while explaining it, so the pace can be raised without changing how often
+  // it reports — the ping rate stays the same, each ping just moves further.
+  const [simSpeed, setSimSpeed] = useState(1);
   const [gpsError, setGpsError] = useState("");
 
   const chatEndRef = useRef(null);
@@ -234,12 +403,17 @@ export default function TripDetail() {
             return [originLat + (destLat - originLat) * t, originLng + (destLng - originLng) * t];
           });
 
+    const stride = Math.max(1, Math.round(points.length / 60)) * simSpeed;
+
     let i = Math.floor(points.length * 0.05);
     const id = setInterval(() => {
       if (i >= points.length) return clearInterval(id);
       const [lat, lng] = points[i];
-      post(`/rides/${rideId}/ping`, { lat, lng, speedKmph: 32 }).catch(() => {});
-      i += Math.max(1, Math.round(points.length / 60));
+      // Reported speed follows the stride, so a sped-up run does not claim to
+      // be crawling at 32 km/h while covering four times the ground — the ETA
+      // is derived from this and would contradict what is on screen.
+      post(`/rides/${rideId}/ping`, { lat, lng, speedKmph: 32 * simSpeed }).catch(() => {});
+      i += stride;
     }, 2000);
 
     return () => clearInterval(id);
@@ -250,7 +424,18 @@ export default function TripDetail() {
     // walk to its starting index, so the vehicle pinged the same spot forever
     // and the marker never moved. These are primitives and stay stable while
     // the trip is the same trip.
-  }, [simulating, isDriver, isLive, rideId, routeGeometry, originLat, originLng, destLat, destLng]);
+  }, [
+    simulating,
+    simSpeed,
+    isDriver,
+    isLive,
+    rideId,
+    routeGeometry,
+    originLat,
+    originLng,
+    destLat,
+    destLng,
+  ]);
 
   /**
    * The driver's device is the source of truth for position.
@@ -408,8 +593,6 @@ export default function TripDetail() {
   const myBooking = riders.find((b) => b.passengerId === user.id);
   const counterpart = isDriver ? riders[0]?.passenger : ride.driver;
 
-  const NEXT_LABEL = { PUBLISHED: "Start trip", STARTED: "Mark in progress", IN_PROGRESS: "Complete trip" };
-  const nextAction = NEXT_LABEL[ride.status];
   const guidance = nextStepFor({ isDriver, ride, riders, myBooking });
 
   return (
@@ -451,8 +634,15 @@ export default function TripDetail() {
         dest={{ lat: ride.destLat, lng: ride.destLng }}
         geometry={ride.routeGeometry}
         vehicle={track?.position}
+        pickup={track?.myPickup}
         className="mt-4 h-60 w-full sm:h-80"
       />
+
+      {!isDriver && <YourJourney track={track} isLive={isLive} status={ride.status} />}
+
+      {isDriver && (
+        <JourneyControl status={ride.status} onAdvance={advance} busy={busy} riders={riders} />
+      )}
 
       {isLive && (
         <div className="card mt-3 flex items-center gap-3 border-brand-200 bg-brand-50 p-3">
@@ -504,16 +694,40 @@ export default function TripDetail() {
               for a moving vehicle. Labelled plainly so nobody mistakes the
               simulation for the real feed. */}
           {isDriver && (
-            <button
-              onClick={() => setSimulating((v) => !v)}
-              className={`shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                simulating
-                  ? "bg-brand-600 text-white"
-                  : "bg-white text-brand-800 shadow-card hover:bg-brand-50"
-              }`}
-            >
-              {simulating ? "Simulating…" : "Simulate driving"}
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                onClick={() => setSimulating((v) => !v)}
+                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+                  simulating
+                    ? "bg-brand-600 text-white"
+                    : "bg-white text-brand-800 shadow-card hover:bg-brand-50"
+                }`}
+              >
+                {simulating ? "Simulating…" : "Simulate driving"}
+              </button>
+
+              {/* Pace control, shown only once the stand-in is running. An
+                  end-to-end run takes over a minute in real time, which is
+                  longer than anyone wants to watch while talking over it. */}
+              {simulating && (
+                <span className="flex overflow-hidden rounded-lg bg-white shadow-card">
+                  {[1, 4].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setSimSpeed(s)}
+                      aria-label={`Simulate at ${s} times speed`}
+                      className={`px-2 py-1.5 text-xs font-semibold transition ${
+                        simSpeed === s
+                          ? "bg-brand-100 text-brand-800"
+                          : "text-slate-500 hover:bg-slate-50"
+                      }`}
+                    >
+                      {s}×
+                    </button>
+                  ))}
+                </span>
+              )}
+            </div>
           )}
           <button
             onClick={share}
@@ -649,19 +863,11 @@ export default function TripDetail() {
         <Banner>{error}</Banner>
       </div>
 
-      {/* Primary action.
-          Deliberately in normal flow: a sticky bar floats over whatever is
-          behind it, which on this screen meant covering the rider list and
-          fare. The page is short enough that the button is reachable without
-          pinning it. */}
+      {/* The driver's start/finish control lives in the journey card near the
+          top of the page, not down here — repeating it would put two identical
+          primary buttons on one screen and leave people guessing whether they
+          do the same thing. */}
       <div className="mt-5 space-y-2">
-        {isDriver && nextAction && (
-          <button className="btn-primary w-full shadow-lift" onClick={advance} disabled={busy}>
-            {ride.status === "IN_PROGRESS" ? <Flag size={17} /> : <Play size={17} />}
-            {busy ? "Updating" : nextAction}
-          </button>
-        )}
-
         {!isDriver && myBooking && ride.status === "COMPLETED" && myBooking.payment?.status !== "COMPLETED" && (
           <button
             className="btn-primary w-full shadow-lift"

@@ -19,6 +19,9 @@ const pin = (fill, ring) =>
 
 const ORIGIN_ICON = pin("#286b57", "#ffffff");
 const DEST_ICON = pin("#b91c1c", "#ffffff");
+// The passenger's own pickup. Violet rather than the route's green so it is
+// obviously "where I stand", not another leg of the driver's journey.
+const PICKUP_ICON = pin("#7c3aed", "#ffffff");
 
 // The live vehicle marker: a filled dot with a soft halo, the convention every
 // rider already understands from maps apps.
@@ -102,11 +105,19 @@ function FitBounds({ points }) {
   return null;
 }
 
-export default function MapView({ origin, dest, geometry, vehicle, className = "" }) {
+export default function MapView({ origin, dest, geometry, vehicle, pickup, className = "" }) {
   const route = useMemo(() => decodePolyline(geometry), [geometry]);
 
   const originPt = origin && [origin.lat, origin.lng];
   const destPt = dest && [dest.lat, dest.lng];
+  // Only drawn when it is somewhere other than the route's own start, which is
+  // the common case where a passenger joins from where the driver sets off.
+  const pickupPt =
+    pickup &&
+    Number.isFinite(pickup.lat) &&
+    !(origin && Math.abs(pickup.lat - origin.lat) < 1e-5 && Math.abs(pickup.lng - origin.lng) < 1e-5)
+      ? [pickup.lat, pickup.lng]
+      : null;
   const vehicleTarget = useMemo(
     () => (vehicle ? [vehicle.lat, vehicle.lng] : null),
     [vehicle?.lat, vehicle?.lng]
@@ -157,12 +168,13 @@ export default function MapView({ origin, dest, geometry, vehicle, className = "
 
         {originPt && <Marker position={originPt} icon={ORIGIN_ICON} />}
         {destPt && <Marker position={destPt} icon={DEST_ICON} />}
+        {pickupPt && <Marker position={pickupPt} icon={PICKUP_ICON} />}
         {vehiclePt && <Marker position={vehiclePt} icon={VEHICLE_ICON} />}
 
         {/* Fitted against the reported position, not the animated one. The
             smoothed value changes on every frame, so passing it here would
             re-fly the map sixty times a second and fight its own animation. */}
-        <FitBounds points={[originPt, destPt, vehicleTarget, ...route].filter(Boolean)} />
+        <FitBounds points={[originPt, destPt, pickupPt, vehicleTarget, ...route].filter(Boolean)} />
       </MapContainer>
     </div>
   );

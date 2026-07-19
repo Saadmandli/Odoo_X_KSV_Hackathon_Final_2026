@@ -3,7 +3,9 @@
 // otherwise a deployed bundle quietly calls localhost.
 const BASE = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
 
-const TOKEN_KEY = "carpool.token";
+// Exported so the auth context can recognise this key in cross-tab storage
+// events. Repeating the literal there would let the two drift apart silently.
+export const TOKEN_KEY = "carpool.token";
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
