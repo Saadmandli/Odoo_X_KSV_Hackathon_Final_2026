@@ -131,6 +131,15 @@ console.log("\n--- who can book one ---");
   });
   ok("a man cannot book it even knowing the id", blocked.status === 403, blocked.json.error);
 
+  // The seed already puts Meera in this car, so booking again would be refused
+  // as a duplicate rather than as a gender check — which would look like a
+  // pass of the wrong thing. Release the seat first so the next call is
+  // genuinely testing whether a woman is allowed in.
+  const hers = (await call("/bookings/my-trips", { token: meera })).json.asPassenger.find(
+    (b) => b.rideId === womenOnlyRideId
+  );
+  if (hers) await call(`/bookings/${hers.id}/cancel`, { method: "POST", token: meera });
+
   const allowed = await call("/bookings", {
     method: "POST",
     token: meera,

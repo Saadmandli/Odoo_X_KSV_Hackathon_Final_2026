@@ -202,18 +202,14 @@ async function main() {
   //   4. Ishita  — women-only, so the safety filter has something to find and
   //                the same search run as Prayag returns three results, not four
   //
-  // Then three evening return runs. They exist so every demo account has a
-  // small handful of trips under both Riding and Driving rather than one lone
-  // row — enough to show the tabs work, few enough to read at a glance.
+  // Four and no more. Every extra ride is another row to account for while
+  // presenting, and a screen of near-identical trips makes the one that
+  // matters harder to point at, not easier to believe.
   const upcoming = [
     { driver: prayag, vehicle: vehicles.swift,  from: PLACES.bopal,        to: PLACES.giftCity, when: at(1, 9, 0),  seats: 4, fare: 110, recurring: [1, 2, 3, 4, 5] },
     { driver: saad,   vehicle: vehicles.i20,    from: PLACES.prahladNagar, to: PLACES.giftCity, when: at(1, 9, 30), seats: 3, fare: 95 },
     { driver: meera,  vehicle: vehicles.ertiga, from: PLACES.adalaj,       to: PLACES.giftCity, when: at(1, 8, 45), seats: 5, fare: 80 },
     { driver: ishita, vehicle: vehicles.nexon,  from: PLACES.vastrapur,    to: PLACES.giftCity, when: at(1, 9, 15), seats: 3, fare: 105, womenOnly: true },
-
-    { driver: saad,   vehicle: vehicles.i20,    from: PLACES.giftCity,     to: PLACES.prahladNagar, when: at(1, 18, 30), seats: 4, fare: 95 },
-    { driver: prayag, vehicle: vehicles.swift,  from: PLACES.giftCity,     to: PLACES.bopal,        when: at(1, 18, 45), seats: 4, fare: 110 },
-    { driver: ishita, vehicle: vehicles.nexon,  from: PLACES.giftCity,     to: PLACES.vastrapur,    when: at(2, 9, 0),   seats: 4, fare: 100 },
   ];
 
   const created = [];
@@ -267,38 +263,28 @@ async function main() {
     data: { seatsLeft: pooled.totalSeats - 3 },
   });
 
-  // Seats on the evening runs, so Riding is not empty for the people who are
-  // driving in the morning. Everyone ends up with a few trips on both sides,
-  // which is the point the two tabs are making: the same account does both.
-  // Each of these rides keeps at least one seat free, so a booking can still be
-  // made live on stage without first cancelling someone.
-  const eveningBookings = [
-    [created[4], prayag, PLACES.giftCity], // Saad drives home, Prayag rides
-    [created[4], meera, PLACES.giftCity],
-    [created[4], ishita, PLACES.giftCity],
-    [created[5], saad, PLACES.giftCity], // Prayag drives home, Saad rides
-    [created[5], devansh, PLACES.giftCity],
-    [created[5], meera, PLACES.giftCity],
-    [created[6], prayag, PLACES.giftCity], // Ishita's morning-after run
-    [created[6], devansh, PLACES.giftCity],
-  ];
-
-  for (const [ride, rider, pickup] of eveningBookings) {
-    await prisma.booking.create({
-      data: {
-        rideId: ride.id,
-        passengerId: rider.id,
-        seats: 1,
-        fareAmount: Number(ride.farePerSeat),
-        pickupLabel: pickup.label, pickupLat: pickup.lat, pickupLng: pickup.lng,
-        dropLabel: ride.destLabel, dropLat: ride.destLat, dropLng: ride.destLng,
-      },
-    });
-    await prisma.ride.update({
-      where: { id: ride.id },
-      data: { seatsLeft: { decrement: 1 } },
-    });
-  }
+  // Meera takes a seat in Ishita's women-only car. One booking, not eight: it
+  // is the single row needed to show a women-only ride actually carrying
+  // someone, and it still leaves two seats free to book live on stage.
+  const womenOnlyRide = created[3];
+  await prisma.booking.create({
+    data: {
+      rideId: womenOnlyRide.id,
+      passengerId: meera.id,
+      seats: 1,
+      fareAmount: Number(womenOnlyRide.farePerSeat),
+      pickupLabel: PLACES.vastrapur.label,
+      pickupLat: PLACES.vastrapur.lat,
+      pickupLng: PLACES.vastrapur.lng,
+      dropLabel: PLACES.giftCity.label,
+      dropLat: PLACES.giftCity.lat,
+      dropLng: PLACES.giftCity.lng,
+    },
+  });
+  await prisma.ride.update({
+    where: { id: womenOnlyRide.id },
+    data: { seatsLeft: { decrement: 1 } },
+  });
 
   await prisma.notification.create({
     data: {
@@ -351,20 +337,26 @@ async function main() {
   // expressions that pick the driver and the riders.
   let femaleDriven = 0;
 
-  // One trip a fortnight across six months. Twelve completed journeys is the
-  // smallest history that still does its job: the efficiency trend has enough
-  // points to be a line rather than a dot, every driver appears more than once
-  // in the cost breakdown, and each demo account keeps two or three trips in
-  // Ride History — few enough to read on stage, unlike the thirty-six that
-  // buried the screen before.
-  for (let week = 24; week >= 1; week -= 2) {
+  // One trip a month across six months. Six completed journeys is the floor
+  // for the reports to mean anything — the efficiency trend still has six
+  // points, so it reads as a line rather than a dot — while leaving Ride
+  // History short enough to take in at a glance. Anything more was data to
+  // account for on stage rather than evidence of anything.
+  const HISTORY_WEEKS = [24, 20, 16, 12, 8, 4];
+  const lastWeek = HISTORY_WEEKS[HISTORY_WEEKS.length - 1];
+
+  for (const [trip, week] of HISTORY_WEEKS.entries()) {
     const tripsThisWeek = 1;
 
     for (let n = 0; n < tripsThisWeek; n++) {
-      const [driver, vehicle] = drivers[(week + n) % drivers.length];
-      const [from, to] = routes[(week + n) % routes.length];
+      // Rotated on the trip counter, not the week. The weeks are a month
+      // apart and every one of them divides by four, so `week % drivers.length`
+      // selected index 0 every single time — Prayag drove the entire history,
+      // no woman drove at all, and the safety report had nothing to count.
+      const [driver, vehicle] = drivers[(trip + n) % drivers.length];
+      const [from, to] = routes[(trip + n) % routes.length];
       const km = estimateKm(from, to);
-      const fare = 80 + ((week + n) % 4) * 15;
+      const fare = 80 + ((trip + n) % 4) * 15;
       const departedAt = at(-week * 7 - n, n === 0 ? 9 : 18, 15);
 
       // Every second trip driven by a woman ran women-only, so the safety
@@ -426,10 +418,11 @@ async function main() {
         // Leave the single most recent fare unpaid so the payment screen has
         // something real to demonstrate.
         //
-        // Keyed on "the last trip in the loop" rather than a specific week
-        // number: the loop now steps a fortnight at a time, so week 1 is never
-        // reached and a hard-coded week would silently leave every fare paid.
-        if (week === 2 && rider.id === saad.id && !unpaid) {
+        // Keyed on the loop's own last entry rather than a hard-coded week.
+        // A literal broke twice already: every time the spacing of the history
+        // changed, that week stopped being reached and every fare silently
+        // came out paid, quietly removing the payment screen from the demo.
+        if (week === lastWeek && rider.id === saad.id && !unpaid) {
           unpaid = booking;
           continue;
         }
@@ -438,7 +431,7 @@ async function main() {
           data: {
             bookingId: booking.id,
             amount: fare,
-            method: ["WALLET", "UPI", "CASH", "CARD"][(week + n) % 4],
+            method: ["WALLET", "UPI", "CASH", "CARD"][(trip + n) % 4],
             status: "COMPLETED",
             paidAt: new Date(departedAt.getTime() + 90 * 60_000),
           },
@@ -446,14 +439,14 @@ async function main() {
 
         // Mostly fours and fives with the occasional three, so averages land
         // around 4.3 rather than a suspiciously perfect 5.0.
-        const stars = [5, 4, 5, 5, 4, 3, 5, 4][(week + n + rider.name.length) % 8];
+        const stars = [5, 4, 5, 5, 4, 3, 5, 4][(trip + n + rider.name.length) % 8];
         await prisma.rating.create({
           data: {
             rideId: ride.id,
             raterId: rider.id,
             driverId: driver.id,
             stars,
-            comment: stars >= 5 ? RATING_NOTES[(week + n) % RATING_NOTES.length] : undefined,
+            comment: stars >= 5 ? RATING_NOTES[(trip + n) % RATING_NOTES.length] : undefined,
           },
         });
       }
