@@ -20,14 +20,18 @@ import { AuthShell } from "../components/AuthShell";
 import { Banner } from "../components/ui";
 
 export default function Signup() {
-  const { signup } = useAuth();
+  const { signup, registerOrg } = useAuth();
   const navigate = useNavigate();
+  // Set when the typed domain belongs to no organisation and the person has
+  // chosen to register it rather than turn back.
+  const [createCompany, setCreateCompany] = useState(false);
   const [form, setForm] = useState({
     name: "",
     phone: "",
     email: "",
     password: "",
     confirm: "",
+    companyName: "",
     // Nothing pre-selected. Defaulting to "prefer not to say" rendered that
     // option as already chosen, so someone who wanted women-only rides had no
     // reason to look at the field — and then could not see those rides at all.
@@ -53,7 +57,11 @@ export default function Signup() {
 
     const timer = setTimeout(async () => {
       try {
-        setOrg(await get(`/public/organization?domain=${encodeURIComponent(domain)}`));
+        const found = await get(`/public/organization?domain=${encodeURIComponent(domain)}`);
+        setOrg(found);
+        // Correcting a typo into a domain that does exist means they are
+        // joining after all, so the company form must not linger.
+        if (found?.registered) setCreateCompany(false);
       } catch {
         setOrg({ registered: false, domain });
       }
@@ -73,7 +81,7 @@ export default function Signup() {
 
     setBusy(true);
     try {
-      await signup({
+      const payload = {
         name: form.name.trim(),
         email: form.email.trim(),
         password: form.password,
@@ -81,7 +89,15 @@ export default function Signup() {
         // Omitted when untouched, so the server applies its own default rather
         // than recording a choice this person never made.
         gender: form.gender || undefined,
-      });
+      };
+
+      // Registering a company signs this person in as its administrator;
+      // joining an existing one makes an ordinary employee.
+      if (createCompany) {
+        await registerOrg({ ...payload, companyName: form.companyName.trim() });
+      } else {
+        await signup(payload);
+      }
       navigate("/dashboard");
     } catch (err) {
       setError(err.message);
@@ -216,16 +232,70 @@ export default function Signup() {
               </div>
             )}
 
-            {org && org.registered === false && (
-              <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
-                <CircleAlert size={15} className="mt-0.5 shrink-0 text-amber-600" />
-                <span className="text-sm text-amber-800">
-                  <span className="font-semibold">{org.domain}</span> is not registered. Ask your
-                  administrator to add your company first.
+            {/* An unregistered domain is not a dead end: whoever gets here
+                first is, by definition, the person setting the company up. */}
+            {org && org.registered === false && !createCompany && (
+              <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                <div className="flex items-start gap-2">
+                  <CircleAlert size={15} className="mt-0.5 shrink-0 text-amber-600" />
+                  <span className="text-sm text-amber-800">
+                    <span className="font-semibold">{org.domain}</span> is not registered yet.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCreateCompany(true)}
+                  className="mt-2 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-[13px] font-semibold text-amber-900 transition hover:bg-amber-100"
+                >
+                  Register {org.domain} as a new company
+                </button>
+                <p className="mt-1.5 text-xs text-amber-700">
+                  You will become its administrator. Colleagues on @{org.domain} can then sign up
+                  and join automatically.
+                </p>
+              </div>
+            )}
+
+            {createCompany && (
+              <div className="mt-2 flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2">
+                <Building2 size={15} className="shrink-0 text-brand-600" />
+                <span className="min-w-0 text-sm text-brand-800">
+                  Creating <span className="font-semibold">{domain}</span> — you will be its admin
                 </span>
+                <button
+                  type="button"
+                  onClick={() => setCreateCompany(false)}
+                  className="ml-auto shrink-0 text-xs font-semibold text-brand-700 hover:underline"
+                >
+                  Cancel
+                </button>
               </div>
             )}
           </div>
+
+          {createCompany && (
+            <div>
+              <label className="label" htmlFor="companyName">
+                Company name
+              </label>
+              <div className="relative">
+                <div className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                  <Building2 size={17} />
+                </div>
+                <input
+                  id="companyName"
+                  className="field pl-10"
+                  required
+                  value={form.companyName}
+                  onChange={set("companyName")}
+                  placeholder="Acme Technologies"
+                />
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Shown to everyone who joins. You can change it later in Admin → Settings.
+              </p>
+            </div>
+          )}
 
           <div>
             <label className="label" htmlFor="password">
@@ -289,9 +359,17 @@ export default function Signup() {
 
           <button
             className="btn-primary group w-full"
-            disabled={busy || org?.registered === false}
+            disabled={busy || (org?.registered === false && !createCompany)}
           >
-            <span>{busy ? "Creating account..." : "Create account"}</span>
+            <span>
+              {busy
+                ? createCompany
+                  ? "Creating company..."
+                  : "Creating account..."
+                : createCompany
+                  ? "Create company & admin account"
+                  : "Create account"}
+            </span>
             {!busy && <ArrowRight size={17} className="transition-transform group-hover:translate-x-1" />}
           </button>
         </form>

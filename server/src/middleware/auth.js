@@ -53,9 +53,32 @@ export async function requireAuth(req, res, next) {
   }
 }
 
+/**
+ * Roles that administer an organisation.
+ *
+ * The platform owner administers their own company as well as running the
+ * platform, so every "is this an admin" test has to accept both. Kept here as
+ * one exported list rather than repeated inline, because the checks live in
+ * five different routers and a role that is missed in one of them fails as a
+ * flat "Admin access required" on a screen the person is entitled to see.
+ */
+export const ADMIN_ROLES = ["ADMIN", "SUPER_ADMIN"];
+
+export const isAdminRole = (role) => ADMIN_ROLES.includes(role);
+
+// Everything behind this gate is still scoped to req.user.orgId, so letting
+// the owner through grants no reach into anyone else's company.
 export function requireAdmin(req, res, next) {
-  if (req.user?.role !== "ADMIN") {
+  if (!isAdminRole(req.user?.role)) {
     return res.status(403).json({ error: "Admin access required" });
+  }
+  next();
+}
+
+/** Guards the platform console: creating organisations and appointing admins. */
+export function requireSuperAdmin(req, res, next) {
+  if (req.user?.role !== "SUPER_ADMIN") {
+    return res.status(403).json({ error: "Platform owner access required" });
   }
   next();
 }

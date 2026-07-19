@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import * as V from "../lib/validation.js";
-import { requireAuth, requireAdmin, ah } from "../middleware/auth.js";
+import { requireAuth, requireAdmin, ADMIN_ROLES, ah } from "../middleware/auth.js";
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -66,9 +66,26 @@ router.post(
         officeLocation: V.optionalText(60),
         manager: V.optionalText(60),
         employeeCode: V.optionalText(20),
+        gender: z.enum(["FEMALE", "MALE", "UNDISCLOSED"]).optional(),
       })
       .safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+    // The address has to be a *work* address at this organisation. The whole
+    // tenancy model is "your email domain decides which company you are in", so
+    // an admin creating someone on gmail.com would put a person inside
+    // Northbridge whom self-signup could never have produced, and who would not
+    // match the domain any other check relies on.
+    const org = await prisma.organization.findUnique({
+      where: { id: req.user.orgId },
+      select: { domain: true, name: true },
+    });
+    const domain = parsed.data.email.split("@")[1];
+    if (domain !== org.domain) {
+      return res.status(400).json({
+        error: `${org.name} employees use @${org.domain} addresses. This one is @${domain}.`,
+      });
+    }
 
     if (await prisma.user.findUnique({ where: { email: parsed.data.email } })) {
       return res.status(409).json({ error: "Email already registered" });
@@ -83,7 +100,9 @@ router.post(
         wallet: { create: {} },
       },
     });
-    res.status(201).json({ employee: { id: user.id, name: user.name, email: user.email } });
+    res.status(201).json({
+      employee: { id: user.id, name: user.name, email: user.email, gender: user.gender },
+    });
   })
 );
 
@@ -147,8 +166,23 @@ router.post(
 router.get(
   "/settings",
   ah(async (req, res) => {
-    const org = await prisma.organization.findUnique({ where: { id: req.user.orgId } });
-    res.json({ org: shapeOrg(org) });
+    const orgId = req.user.orgId;
+
+    // The header on this screen is the one place an administrator sees their
+    // organisation as a whole, so the counts come back with it rather than
+    // leaving the page to assemble them from four separate calls.
+    const [org, employees, admins, rides, pendingAccess] = await Promise.all([
+      prisma.organization.findUnique({ where: { id: orgId } }),
+      prisma.user.count({ where: { orgId, isActive: true } }),
+      prisma.user.count({ where: { orgId, role: { in: ADMIN_ROLES }, isActive: true } }),
+      prisma.ride.count({ where: { orgId } }),
+      prisma.user.count({ where: { orgId, isApproved: false } }),
+    ]);
+
+    res.json({
+      org: shapeOrg(org),
+      stats: { employees, admins, rides, pendingAccess },
+    });
   })
 );
 

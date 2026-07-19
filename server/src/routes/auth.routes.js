@@ -75,6 +75,104 @@ router.post(
   })
 );
 
+// Free mailbox providers. A company is identified by its domain, so letting
+// someone register "gmail.com" would hand them every Gmail user in the country
+// as an employee — and permanently block the real signups those addresses
+// might otherwise make.
+const PUBLIC_EMAIL_DOMAINS = new Set([
+  "gmail.com", "googlemail.com", "yahoo.com", "yahoo.in", "yahoo.co.in",
+  "outlook.com", "hotmail.com", "live.com", "msn.com",
+  "icloud.com", "me.com", "aol.com", "proton.me", "protonmail.com",
+  "rediffmail.com", "zoho.com", "mail.com", "gmx.com", "yandex.com",
+]);
+
+const registerOrgSchema = z.object({
+  companyName: V.text(80, "Company name"),
+  name: V.personName,
+  email: V.email,
+  password: z.string().min(6, "Password must be at least 6 characters").max(200),
+  phone: V.phone.optional(),
+  gender: z.enum(GENDERS).optional(),
+});
+
+// Registers a company and its first administrator together.
+//
+// This is the only way an Organization is created, and it is deliberately the
+// same act as creating its first user: an org with no admin cannot be
+// administered, and an admin with no org has nowhere to belong. Doing both in
+// one transaction means a failure half-way cannot leave either one stranded.
+//
+// The domain is taken from the registrant's own work address rather than typed
+// separately, so nobody can claim a domain they are not already using.
+router.post(
+  "/register-organization",
+  ah(async (req, res) => {
+    const parsed = registerOrgSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+    const { companyName, name, email, password, phone, gender } = parsed.data;
+    const domain = email.split("@")[1]?.toLowerCase();
+
+    if (PUBLIC_EMAIL_DOMAINS.has(domain)) {
+      return res.status(400).json({
+        error: `Use your work email. ${domain} is a personal email provider, not a company.`,
+      });
+    }
+
+    // Someone whose company is already on the platform should be joining it,
+    // not creating a second one — and the unique domain would refuse anyway.
+    const existing = await prisma.organization.findUnique({
+      where: { domain },
+      select: { name: true },
+    });
+    if (existing) {
+      return res.status(409).json({
+        error: `${existing.name} is already registered on ${domain}. Create an account instead.`,
+      });
+    }
+
+    if (await prisma.user.findUnique({ where: { email } })) {
+      return res.status(409).json({ error: "Email already registered" });
+    }
+
+    try {
+      const user = await prisma.$transaction(async (tx) => {
+        const org = await tx.organization.create({
+          data: { name: companyName, domain, adminContact: email },
+        });
+
+        return tx.user.create({
+          data: {
+            orgId: org.id,
+            name,
+            email,
+            phone,
+            gender: gender ?? "UNDISCLOSED",
+            // The person who registers the company administers it. Every other
+            // account is created as an EMPLOYEE and no endpoint can change a
+            // role, so this is the single point at which an admin exists.
+            role: "ADMIN",
+            passwordHash: await bcrypt.hash(password, 10),
+            avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+            wallet: { create: {} },
+          },
+        });
+      });
+
+      return res.status(201).json({ token: signToken(user), user: publicUser(user) });
+    } catch (err) {
+      // Two people registering the same domain at once: the unique index picks
+      // a winner and the loser is told to join rather than shown a 500.
+      if (err.code === "P2002") {
+        return res.status(409).json({
+          error: `${domain} was just registered by someone else. Create an account instead.`,
+        });
+      }
+      throw err;
+    }
+  })
+);
+
 router.post(
   "/login",
   ah(async (req, res) => {
@@ -107,7 +205,11 @@ router.get(
   ah(async (req, res) => {
     const org = await prisma.organization.findUnique({
       where: { id: req.user.orgId },
-      select: { id: true, name: true, currency: true },
+      // `domain` is here because the admin's "add employee" form builds the
+      // work address from it — the local part is typed, the domain is fixed by
+      // the organisation. It is not a secret: it is the address everyone here
+      // already signs in with.
+      select: { id: true, name: true, currency: true, domain: true },
     });
     res.json({ user: req.user, org });
   })

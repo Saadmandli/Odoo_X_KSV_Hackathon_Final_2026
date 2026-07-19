@@ -80,6 +80,17 @@ export function AuthProvider({ children }) {
     return user;
   };
 
+  // Creates the company and signs its first administrator straight in, so
+  // registering does not end on a "now go and log in" screen.
+  const registerOrg = async (payload) => {
+    const { token, user } = await post("/auth/register-organization", payload);
+    setToken(token);
+    setUser(user);
+    setStatus("authed");
+    await refresh();
+    return user;
+  };
+
   const logout = () => {
     clearToken();
     setUser(null);
@@ -89,7 +100,20 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, org, status, login, signup, logout, refresh, isAdmin: user?.role === "ADMIN" }}
+      value={{
+        user,
+        org,
+        status,
+        login,
+        signup,
+        registerOrg,
+        logout,
+        refresh,
+        // The platform owner administers their own organisation too, so they
+        // are an admin as well as an owner.
+        isAdmin: user?.role === "ADMIN" || user?.role === "SUPER_ADMIN",
+        isOwner: user?.role === "SUPER_ADMIN",
+      }}
     >
       {children}
     </AuthContext.Provider>

@@ -13,6 +13,8 @@ import notificationsRoutes from "./routes/notifications.routes.js";
 import publicRoutes from "./routes/public.routes.js";
 import ratingsRoutes from "./routes/ratings.routes.js";
 import chatRoutes from "./routes/chat.routes.js";
+import messagesRoutes from "./routes/messages.routes.js";
+import platformRoutes from "./routes/platform.routes.js";
 import sosRoutes from "./routes/sos.routes.js";
 
 export const app = express(); 
@@ -39,6 +41,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/ratings", ratingsRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/messages", messagesRoutes);
+app.use("/api/platform", platformRoutes);
 app.use("/api/sos", sosRoutes);
 
 app.use((req, res) => res.status(404).json({ error: `No route for ${req.method} ${req.path}` }));

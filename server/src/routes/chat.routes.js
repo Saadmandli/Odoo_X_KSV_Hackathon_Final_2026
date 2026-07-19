@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
-import { requireAuth, ah } from "../middleware/auth.js";
+import { requireAuth, isAdminRole, ah } from "../middleware/auth.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -65,7 +65,7 @@ router.delete(
     if (!message) return res.status(404).json({ error: "Message not found" });
 
     const isAuthor = message.senderId === req.user.id;
-    if (!isAuthor && req.user.role !== "ADMIN") {
+    if (!isAuthor && !isAdminRole(req.user.role)) {
       return res.status(403).json({ error: "You can only delete your own messages" });
     }
 

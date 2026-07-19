@@ -118,7 +118,9 @@ async function main() {
     data: employee("Shrey Naik", "shrey@northbridge.in", {
       gender: "MALE",
       password: "admin123",
-      role: "ADMIN",
+      // Owns the platform: creates organisations and appoints their admins,
+      // as well as administering Northbridge like any other admin.
+      role: "SUPER_ADMIN",
       department: "Operations",
       employeeCode: "NB001",
       phone: "+919825011001",

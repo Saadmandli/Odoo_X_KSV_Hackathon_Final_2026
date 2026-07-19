@@ -5,6 +5,7 @@ import {
   Car,
   ChartColumn,
   ClipboardList,
+  Globe,
   History,
   LogOut,
   Menu,
@@ -37,7 +38,7 @@ const MORE = [
 ];
 
 export default function Layout() {
-  const { user, org, logout, isAdmin } = useAuth();
+  const { user, org, logout, isAdmin, isOwner } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const isDesktop = useIsDesktop();
@@ -120,6 +121,19 @@ export default function Layout() {
         </button>
       )}
 
+      {isOwner && (
+        <button
+          onClick={() => {
+            setShowMore(false);
+            navigate("/platform");
+          }}
+          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[15px] text-slate-700 transition hover:bg-slate-50"
+        >
+          <Globe size={17} className="text-slate-400" />
+          Platform
+        </button>
+      )}
+
       <button
         onClick={() => {
           logout();
@@ -187,6 +201,17 @@ export default function Layout() {
                 <>
                   <ShieldCheck size={19} strokeWidth={isActive ? 2.4 : 2} />
                   Admin
+                </>
+              )}
+            </NavLink>
+          )}
+
+          {isOwner && (
+            <NavLink to="/platform" className={sidebarLink}>
+              {({ isActive }) => (
+                <>
+                  <Globe size={19} strokeWidth={isActive ? 2.4 : 2} />
+                  Platform
                 </>
               )}
             </NavLink>

@@ -17,14 +17,16 @@ import Reports from "./pages/Reports";
 import Chat from "./pages/Chat";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
+import Platform from "./pages/Platform";
 import PublicTrack from "./pages/PublicTrack";
 
-function Protected({ children, adminOnly = false }) {
-  const { status, isAdmin } = useAuth();
+function Protected({ children, adminOnly = false, ownerOnly = false }) {
+  const { status, isAdmin, isOwner } = useAuth();
 
   if (status === "loading") return <Spinner label="Loading" />;
   if (status !== "authed") return <Navigate to="/login" replace />;
   if (adminOnly && !isAdmin) return <Navigate to="/dashboard" replace />;
+  if (ownerOnly && !isOwner) return <Navigate to="/dashboard" replace />;
 
   return children;
 }
@@ -70,6 +72,14 @@ export default function App() {
               element={
                 <Protected adminOnly>
                   <Admin />
+                </Protected>
+              }
+            />
+            <Route
+              path="/platform"
+              element={
+                <Protected ownerOnly>
+                  <Platform />
                 </Protected>
               }
             />

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessagesSquare, Send, Trash2 } from "lucide-react";
+import { MessageCircle, MessagesSquare, Send, Trash2, Users } from "lucide-react";
 import { del, get, post } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { Avatar, Banner, EmptyState, Spinner } from "../components/ui";
+import DirectMessages from "../components/DirectMessages";
 
 // Polled rather than socket-based, for the same reason live tracking is: no
 // connection to drop, and it behaves identically on every host.
@@ -14,8 +15,8 @@ const SUGGESTIONS = [
   "Is the SG Highway route busy today?",
 ];
 
-export default function Chat() {
-  const { user, org } = useAuth();
+function Noticeboard() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState(null);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
@@ -85,17 +86,7 @@ export default function Chat() {
   if (messages === null) return <Spinner label="Loading messages" />;
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-11rem)] max-w-3xl flex-col">
-      <div className="mb-4">
-        <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-          {org?.name ?? "Organisation"} chat
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Ask for a lift, offer a spare seat, or share a route tip. Everyone in your organisation
-          can see this.
-        </p>
-      </div>
-
+    <>
       <div className="card flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
           {messages.length === 0 ? (
@@ -190,6 +181,69 @@ export default function Chat() {
       <div className="mt-3">
         <Banner>{error}</Banner>
       </div>
+    </>
+  );
+}
+
+const TABS = [
+  ["board", "Company board", Users],
+  ["direct", "Direct messages", MessageCircle],
+];
+
+export default function Chat() {
+  const { org } = useAuth();
+  const [tab, setTab] = useState("board");
+  const [unread, setUnread] = useState(0);
+
+  // Polled alongside the tab itself so the badge is right even while the
+  // noticeboard is the thing on screen.
+  useEffect(() => {
+    const read = () =>
+      get("/messages/unread-count")
+        .then((d) => setUnread(d.count))
+        .catch(() => {});
+    read();
+    const id = setInterval(read, POLL_MS);
+    return () => clearInterval(id);
+  }, [tab]);
+
+  return (
+    <div className="mx-auto flex h-[calc(100vh-11rem)] max-w-4xl flex-col">
+      <div className="mb-3">
+        <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+          {org?.name ?? "Organisation"} chat
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          {tab === "board"
+            ? "Ask for a lift, offer a spare seat, or share a route tip. Everyone in your organisation can see this."
+            : "Private one-to-one messages. Only you and the person you are writing to can read these."}
+        </p>
+      </div>
+
+      <div className="mb-3 flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
+        {TABS.map(([key, label, Icon]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-[13.5px] font-semibold transition ${
+              tab === key
+                ? "bg-white text-brand-700 shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <Icon size={16} />
+            {label}
+            {key === "direct" && unread > 0 && (
+              <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                {unread}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab === "board" ? <Noticeboard /> : <DirectMessages />}
     </div>
   );
 }

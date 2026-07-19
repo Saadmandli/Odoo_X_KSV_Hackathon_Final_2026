@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { requireAuth, ah } from "../middleware/auth.js";
+import { requireAuth, isAdminRole, ADMIN_ROLES, ah } from "../middleware/auth.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -141,7 +141,7 @@ router.get(
 router.get(
   "/org",
   ah(async (req, res) => {
-    if (req.user.role !== "ADMIN") {
+    if (!isAdminRole(req.user.role)) {
       return res.status(403).json({ error: "Admin access required" });
     }
 
@@ -233,7 +233,7 @@ router.get(
 router.get(
   "/safety",
   ah(async (req, res) => {
-    if (req.user.role !== "ADMIN") {
+    if (!isAdminRole(req.user.role)) {
       return res.status(403).json({ error: "Admin access required" });
     }
     const orgId = req.user.orgId;

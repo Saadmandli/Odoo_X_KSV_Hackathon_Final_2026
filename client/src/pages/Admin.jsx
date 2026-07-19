@@ -18,10 +18,13 @@ import {
   ShieldAlert,
   ShieldCheck,
   Star,
+  UserPlus,
   Users,
 } from "lucide-react";
 import { get, post, put } from "../lib/api";
-import { Avatar, Banner, Spinner, StatusChip, money, when } from "../components/ui";
+import { useAuth } from "../lib/auth";
+import { filterName, filterPhone } from "../lib/inputs";
+import { Avatar, Banner, Sheet, Spinner, StatusChip, money, when } from "../components/ui";
 
 // Same validated accent and recessive chrome as the personal report, so the
 // two dashboards read as one product.
@@ -93,14 +96,61 @@ export default function Admin() {
   );
 }
 
+const BLANK_EMPLOYEE = {
+  name: "",
+  localPart: "",
+  password: "",
+  phone: "",
+  department: "",
+  employeeCode: "",
+  gender: "",
+};
+
 function Employees() {
+  const { org } = useAuth();
   const [rows, setRows] = useState(null);
   const [error, setError] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(BLANK_EMPLOYEE);
+  const [formError, setFormError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [created, setCreated] = useState(null);
 
   const load = () => get("/admin/employees").then((d) => setRows(d.employees)).catch((e) => setError(e.message));
   useEffect(() => {
     load();
   }, []);
+
+  const addEmployee = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setFormError("");
+    try {
+      // The admin types the name in front of the @; the domain is the
+      // organisation's own and is not theirs to choose, because it is what
+      // decides which company the account belongs to.
+      const email = `${form.localPart.trim().toLowerCase()}@${org.domain}`;
+      const { employee } = await post("/admin/employees", {
+        name: form.name.trim(),
+        email,
+        password: form.password,
+        phone: form.phone.trim() || undefined,
+        department: form.department.trim() || undefined,
+        employeeCode: form.employeeCode.trim() || undefined,
+        gender: form.gender || undefined,
+      });
+      await load();
+      setShowForm(false);
+      setForm(BLANK_EMPLOYEE);
+      // Held on screen afterwards: the admin has just chosen a password on
+      // somebody else's behalf and has one chance to pass it on.
+      setCreated({ ...employee, password: form.password });
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const toggle = async (emp) => {
     setError("");
@@ -116,7 +166,42 @@ function Employees() {
 
   return (
     <>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-sm text-slate-500">
+          {rows.length} {rows.length === 1 ? "person" : "people"} at {org?.name}
+        </p>
+        <button onClick={() => setShowForm(true)} className="btn-primary btn-sm shrink-0">
+          <UserPlus size={15} />
+          Add employee
+        </button>
+      </div>
+
       <Banner>{error}</Banner>
+
+      {/* Shown once, straight after creating the account. The admin picked this
+          password for someone else and cannot look it up again afterwards. */}
+      {created && (
+        <div className="card mb-3 border-brand-200 bg-brand-50 p-4">
+          <p className="text-sm font-semibold text-brand-900">{created.name} can now sign in</p>
+          <dl className="mt-2 space-y-1 text-sm text-brand-800">
+            <div className="flex gap-2">
+              <dt className="w-20 shrink-0 text-brand-700">Work email</dt>
+              <dd className="font-mono">{created.email}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="w-20 shrink-0 text-brand-700">Password</dt>
+              <dd className="font-mono">{created.password}</dd>
+            </div>
+          </dl>
+          <p className="mt-2 text-xs text-brand-700">
+            Pass these on now — the password is not stored anywhere you can read it back.
+          </p>
+          <button onClick={() => setCreated(null)} className="btn-secondary btn-sm mt-3">
+            Done
+          </button>
+        </div>
+      )}
+
       <div className="card divide-y divide-slate-100">
         {rows.map((e) => (
           <div key={e.id} className="flex items-center gap-3 p-4">
@@ -156,6 +241,130 @@ function Employees() {
           </div>
         ))}
       </div>
+
+      <Sheet open={showForm} onClose={() => !busy && setShowForm(false)} title="Add an employee">
+        <form onSubmit={addEmployee} className="space-y-4">
+          <div>
+            <label className="label">Full name</label>
+            <input
+              className="field"
+              required
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: filterName(e.target.value) })}
+              placeholder="Ananya Desai"
+            />
+          </div>
+
+          <div>
+            <label className="label">Work email</label>
+            {/* The domain is fixed and shown, not typed. It decides which
+                organisation the account belongs to, so it is the one part of
+                the address an administrator must not be able to get wrong. */}
+            {/* min-w-0 on the input: `.field` is w-full, which otherwise
+                crushes the domain beside it down to just the "@". */}
+            <div className="flex items-stretch">
+              <input
+                className="field min-w-0 flex-1 rounded-r-none border-r-0 lowercase"
+                required
+                value={form.localPart}
+                onChange={(e) =>
+                  setForm({ ...form, localPart: e.target.value.replace(/[^a-zA-Z0-9._-]/g, "") })
+                }
+                placeholder="ananya"
+              />
+              <span className="flex shrink-0 items-center rounded-r-xl border border-l-0 border-slate-200 bg-slate-100 px-3 text-[15px] font-medium text-slate-600">
+                @{org?.domain}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              Everyone at {org?.name} signs in with this domain.
+            </p>
+          </div>
+
+          <div>
+            <label className="label">Temporary password</label>
+            <input
+              className="field"
+              required
+              minLength={6}
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              placeholder="At least 6 characters"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Shown to you once after you save, so you can pass it on.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Department</label>
+              <input
+                className="field"
+                value={form.department}
+                onChange={(e) => setForm({ ...form, department: e.target.value })}
+                placeholder="Engineering"
+              />
+            </div>
+            <div>
+              <label className="label">Employee code</label>
+              <input
+                className="field"
+                value={form.employeeCode}
+                onChange={(e) => setForm({ ...form, employeeCode: e.target.value })}
+                placeholder="NB008"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Mobile number</label>
+            <input
+              className="field"
+              type="tel"
+              inputMode="tel"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: filterPhone(e.target.value) })}
+              placeholder="+91 98765 43210"
+            />
+          </div>
+
+          <div>
+            <label className="label">
+              Gender <span className="font-medium normal-case text-slate-400">(optional)</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: "FEMALE", label: "Female" },
+                { value: "MALE", label: "Male" },
+                { value: "UNDISCLOSED", label: "Prefer not to say" },
+              ].map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => setForm({ ...form, gender: c.value })}
+                  className={`min-h-[42px] rounded-xl border px-2 text-[12.5px] font-semibold leading-tight transition ${
+                    form.gender === c.value
+                      ? "border-brand-500 bg-brand-50 text-brand-800 ring-4 ring-brand-500/10"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-brand-300"
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              Only used to match women-only rides. They can change it themselves later.
+            </p>
+          </div>
+
+          <Banner>{formError}</Banner>
+
+          <button className="btn-primary w-full" disabled={busy}>
+            {busy ? "Creating…" : "Create employee"}
+          </button>
+        </form>
+      </Sheet>
     </>
   );
 }
@@ -615,12 +824,19 @@ function Impact() {
 
 function Settings() {
   const [org, setOrg] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    get("/admin/settings").then((d) => setOrg(d.org)).catch((e) => setError(e.message));
+    get("/admin/settings")
+      .then((d) => {
+        setOrg(d.org);
+        setStats(d.stats);
+      })
+      .catch((e) => setError(e.message));
   }, []);
 
   const set = (k) => (e) => setOrg({ ...org, [k]: e.target.value });
@@ -654,6 +870,72 @@ function Settings() {
 
   return (
     <form onSubmit={save} className="space-y-4">
+      {/* The organisation at a glance. An administrator arriving here is asking
+          two questions — "what is my company set up as" and "how do my people
+          get in" — so both are answered before any editable field appears. */}
+      <div className="overflow-hidden rounded-xl2 border border-slate-200 bg-white shadow-sm">
+        <div className="bg-gradient-to-br from-brand-600 to-brand-700 px-5 py-4 text-white">
+          <div className="flex items-start gap-3.5">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/15 text-lg font-bold backdrop-blur">
+              {(org.name ?? "?").slice(0, 2).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate text-lg font-bold leading-tight">{org.name}</h2>
+              <p className="mt-0.5 truncate text-[13px] text-white/80">
+                {org.industry || "Industry not set"}
+                {org.registeredAddress ? ` · ${org.registeredAddress}` : ""}
+              </p>
+            </div>
+            <span className="hidden shrink-0 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide backdrop-blur sm:block">
+              Active
+            </span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[
+              ["Employees", stats?.employees],
+              ["Administrators", stats?.admins],
+              ["Rides published", stats?.rides],
+              ["Pending access", stats?.pendingAccess],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-lg bg-white/10 px-3 py-2 backdrop-blur">
+                <div className="text-[19px] font-bold leading-none">{value ?? "—"}</div>
+                <div className="mt-1 text-[11px] font-medium text-white/75">{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* How people join, stated plainly — this is the question every new
+            administrator asks first, and the answer is not a setting they can
+            change, so it belongs here rather than beside an input. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              How your team joins
+            </div>
+            <p className="mt-0.5 text-[13px] text-slate-600">
+              Anyone with an{" "}
+              <span className="rounded bg-white px-1.5 py-0.5 font-mono text-[12.5px] font-semibold text-brand-700 ring-1 ring-slate-200">
+                @{org.domain}
+              </span>{" "}
+              address can sign up and joins {org.name} automatically. No invite codes.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard?.writeText(`${window.location.origin}/signup`);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }}
+            className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            {copied ? "Link copied" : "Copy sign-up link"}
+          </button>
+        </div>
+      </div>
+
       <div className="card p-4">
         <h2 className="mb-3 flex items-center gap-2 text-[15px] font-semibold text-slate-900">
           <Building2 size={16} className="text-slate-400" />

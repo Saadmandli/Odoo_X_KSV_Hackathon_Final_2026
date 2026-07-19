@@ -260,6 +260,50 @@ for (const [what, body] of [
   );
 }
 
+console.log("\n--- admin creating an employee ---");
+{
+  const stamp = Date.now();
+  const good = {
+    name: "Ananya Desai",
+    email: `ananya${stamp}@northbridge.in`,
+    password: "password123",
+    department: "Design",
+    gender: "FEMALE",
+  };
+
+  rejects(
+    "an outside domain is refused",
+    await call("/admin/employees", {
+      method: "POST",
+      token: shrey,
+      body: { ...good, email: `ananya${stamp}@gmail.com` },
+    })
+  );
+  rejects(
+    "a non-admin cannot create anyone",
+    await call("/admin/employees", { method: "POST", token: prayag, body: good })
+  );
+
+  const made = await call("/admin/employees", { method: "POST", token: shrey, body: good });
+  ok("the admin creates an employee", made.status === 201, made.json.employee?.email);
+
+  const token = await login(good.email, good.password);
+  const who = await call("/auth/me", { token });
+  ok("the new employee can sign in", Boolean(token));
+  ok(
+    "they land in the admin's organisation",
+    who.json.org?.name === "Northbridge Technologies",
+    who.json.org?.name
+  );
+  ok("their gender was recorded", who.json.user?.gender === "FEMALE", who.json.user?.gender);
+  ok("the org domain is available to the form", Boolean(who.json.org?.domain), who.json.org?.domain);
+
+  rejects(
+    "the same address cannot be used twice",
+    await call("/admin/employees", { method: "POST", token: shrey, body: good })
+  );
+}
+
 console.log("\n--- malformed requests ---");
 {
   const empty = await call("/rides", { method: "POST", token: prayag, body: {} });

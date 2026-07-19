@@ -36,15 +36,21 @@ model Organization {
 
   createdAt DateTime @default(now())
 
-  users       User[]
-  rides       Ride[]
-  orgMessages OrgMessage[]
-  sosAlerts   SosAlert[]
+  users          User[]
+  rides          Ride[]
+  orgMessages    OrgMessage[]
+  directMessages DirectMessage[]
+  sosAlerts      SosAlert[]
 
   @@map("organizations")
 }
 
 enum Role {
+  // Owns the platform itself: creates organisations and appoints their
+  // administrators. Belongs to an organisation like anyone else — the extra
+  // reach comes from the role, not from being outside the tenancy model.
+  SUPER_ADMIN
+  // Runs one organisation: its people, vehicles, safety and fare settings.
   ADMIN
   EMPLOYEE
 }
@@ -99,6 +105,8 @@ model User {
   ratingsGiven    Rating[] @relation("ratingsGiven")
   ratingsReceived Rating[] @relation("ratingsReceived")
   orgMessages     OrgMessage[]
+  dmSent          DirectMessage[] @relation("dmSent")
+  dmReceived      DirectMessage[] @relation("dmReceived")
   sosAlerts       SosAlert[]
 
   @@index([orgId])
@@ -299,6 +307,36 @@ model Message {
 
   @@index([rideId, createdAt])
   @@map("messages")
+}
+
+/// A private message between two colleagues.
+///
+/// Separate from Message (which belongs to a ride) and OrgMessage (which the
+/// whole company reads), because this one has a reader: `readAt` is what drives
+/// the unread badge, and it only means anything for a conversation of two.
+///
+/// `orgId` is denormalised rather than derived from the participants so every
+/// read stays a single indexed query on the same tenant key the rest of the
+/// app uses — a private message must never be reachable from another company.
+model DirectMessage {
+  id          String    @id @default(cuid())
+  orgId       String
+  senderId    String
+  recipientId String
+  body        String
+  createdAt   DateTime  @default(now())
+  readAt      DateTime?
+
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  sender    User         @relation("dmSent", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient User         @relation("dmReceived", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  // Fetching one thread, newest last.
+  @@index([senderId, recipientId, createdAt])
+  @@index([recipientId, senderId, createdAt])
+  // Counting what someone has not read yet.
+  @@index([recipientId, readAt])
+  @@map("direct_messages")
 }
 
 // ----------------------------------------------------------- payments, wallet

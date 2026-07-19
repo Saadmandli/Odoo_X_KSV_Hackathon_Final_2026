@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
-import { requireAuth, requireAdmin, ah } from "../middleware/auth.js";
+import { requireAuth, requireAdmin, ADMIN_ROLES, ah } from "../middleware/auth.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -50,7 +50,7 @@ router.post(
     }
 
     const admins = await prisma.user.findMany({
-      where: { orgId: req.user.orgId, role: "ADMIN", isActive: true },
+      where: { orgId: req.user.orgId, role: { in: ADMIN_ROLES }, isActive: true },
       select: { id: true },
     });
 
