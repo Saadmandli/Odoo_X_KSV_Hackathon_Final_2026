@@ -3,8 +3,34 @@ dotenv.config({ override: true });
 
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { getRoute } from "../src/lib/geo.js";
 
 const prisma = new PrismaClient();
+
+/**
+ * Real road geometry for a seeded ride.
+ *
+ * Without this every seeded trip stored a null polyline, so the map drew the
+ * dashed straight line it falls back to when routing is unavailable — a ride
+ * cutting across the Sabarmati rather than following the road, which is the
+ * first thing anyone notices on the tracking screen.
+ *
+ * `getRoute` already falls back to a haversine estimate on any failure and
+ * never throws, so the seed still runs with no network — it just produces the
+ * straight lines again, which is the honest result when no router was reached.
+ */
+async function routeFor(from, to) {
+  const route = await getRoute(
+    { label: from.label, lat: from.lat, lng: from.lng },
+    { label: to.label, lat: to.lat, lng: to.lng }
+  );
+  return {
+    distanceKm: route.distanceKm,
+    durationMin: route.durationMin,
+    routeGeometry: route.geometry,
+    source: route.source,
+  };
+}
 
 // Real Ahmedabad / Gandhinagar coordinates along the daily commute corridor.
 const PLACES = {
@@ -235,8 +261,10 @@ async function main() {
   ];
 
   const created = [];
+  let routed = 0;
   for (const r of upcoming) {
-    const km = estimateKm(r.from, r.to);
+    const route = await routeFor(r.from, r.to);
+    if (route.source === "osrm") routed++;
     created.push(
       await prisma.ride.create({
         data: {
@@ -249,8 +277,9 @@ async function main() {
           totalSeats: r.seats,
           seatsLeft: r.seats,
           farePerSeat: r.fare,
-          distanceKm: km,
-          durationMin: minutesFor(km),
+          distanceKm: route.distanceKm,
+          durationMin: route.durationMin,
+          routeGeometry: route.routeGeometry,
           isRecurring: Boolean(r.recurring),
           recurrenceDays: r.recurring ?? [],
           womenOnly: Boolean(r.womenOnly),
@@ -382,7 +411,10 @@ async function main() {
       // no woman drove at all, and the safety report had nothing to count.
       const [driver, vehicle] = drivers[(trip + n) % drivers.length];
       const [from, to] = routes[(trip + n) % routes.length];
-      const km = estimateKm(from, to);
+      // Routed too: a completed trip is still opened from Ride History, and it
+      // shows the same map as a live one.
+      const route = await routeFor(from, to);
+      if (route.source === "osrm") routed++;
       const fare = 80 + ((trip + n) % 4) * 15;
       const departedAt = at(-week * 7 - n, n === 0 ? 9 : 18, 15);
 
@@ -407,11 +439,12 @@ async function main() {
           totalSeats: 3,
           seatsLeft: 1,
           farePerSeat: fare,
-          distanceKm: km,
-          durationMin: minutesFor(km),
+          distanceKm: route.distanceKm,
+          durationMin: route.durationMin,
+          routeGeometry: route.routeGeometry,
           status: "COMPLETED",
           startedAt: departedAt,
-          completedAt: new Date(departedAt.getTime() + minutesFor(km) * 60_000),
+          completedAt: new Date(departedAt.getTime() + route.durationMin * 60_000),
           womenOnly,
         },
       });
@@ -537,6 +570,11 @@ Seed complete — ${org.name}
                         so the pickup-order optimisation is visible immediately
   ${completed} completed trips  — spread over 6 months for the efficiency trend
   1 unpaid fare       — Saad has a completed trip awaiting payment
+  ${routed}/${upcoming.length + completed} routes drawn from real roads${
+    routed < upcoming.length + completed
+      ? " — the rest fell back to straight lines, meaning the router was unreachable"
+      : ""
+  }
 `);
 }
 
